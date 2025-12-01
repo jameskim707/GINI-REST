@@ -228,7 +228,7 @@ def add_sleep_record():
 # ============================================================================
 
 def calculate_sleep_debt():
-    """수면 빚 계산 + 패턴 분석 + 감정 태그 분석"""
+    """수면 및 계산 + 패턴 분석 + 감정 태그 분석"""
     if len(st.session_state.sleep_data) == 0:
         st.info("아직 수면 기록이 없습니다. 먼저 기록을 추가해주세요.")
         return
@@ -261,7 +261,7 @@ def calculate_sleep_debt():
         st.metric("야간 각성", f"{avg_awake:.1f}회")
     
     with col4:
-        st.metric("수면 빚", f"{abs(total_debt):.1f}h", 
+        st.metric("수면 및", f"{abs(total_debt):.1f}h", 
                  delta=f"{daily_deficit:.1f}h/일", delta_color="inverse")
     
     st.markdown("---")
@@ -362,7 +362,7 @@ def calculate_sleep_debt():
         recovery_days = int(total_debt / 1.5) + 1
         
         st.warning(f"""
-        **⚠️ 수면 빚 누적**
+        **⚠️ 수면 및 누적**
         
         - 지난 {len(recent_data)}일 평균: **{avg_sleep:.1f}시간**
         - 권장량 대비: **매일 {abs(daily_deficit):.1f}시간 부족**
