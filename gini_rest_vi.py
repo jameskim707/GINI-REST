@@ -228,62 +228,191 @@ def add_sleep_record():
 # ============================================================================
 
 def calculate_sleep_debt():
-    """수면 빚 계산"""
+    """수면 빚 계산 + 패턴 분석 + 감정 태그 분석"""
     if len(st.session_state.sleep_data) == 0:
         st.info("아직 수면 기록이 없습니다. 먼저 기록을 추가해주세요.")
         return
     
-    st.subheader("💤 수면 빚 분석")
+    st.subheader("💤 수면 종합 분석")
     
     # 최근 7일 데이터
     recent_data = st.session_state.sleep_data[-7:]
     
     total_hours = sum([record['total_sleep_hours'] for record in recent_data])
     avg_sleep = total_hours / len(recent_data)
+    avg_latency = sum([record['sleep_latency'] for record in recent_data]) / len(recent_data)
+    avg_awake = sum([record['awake_count'] for record in recent_data]) / len(recent_data)
     
     recommended_sleep = 7.5  # 권장 수면 시간
     daily_deficit = recommended_sleep - avg_sleep
     total_debt = daily_deficit * len(recent_data)
     
-    # 결과 표시
-    col1, col2, col3 = st.columns(3)
+    # 기본 지표
+    st.markdown("### 📊 기본 수면 지표")
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("평균 수면 시간", f"{avg_sleep:.1f}시간")
+        st.metric("평균 수면", f"{avg_sleep:.1f}시간")
     
     with col2:
-        st.metric("일일 부족량", f"{daily_deficit:.1f}시간", 
-                 delta=f"{daily_deficit:.1f}h", delta_color="inverse")
+        st.metric("입면 시간", f"{avg_latency:.0f}분")
     
     with col3:
-        st.metric("누적 수면 빚", f"{abs(total_debt):.1f}시간")
+        st.metric("야간 각성", f"{avg_awake:.1f}회")
     
-    # 분석 및 조언
+    with col4:
+        st.metric("수면 빚", f"{abs(total_debt):.1f}h", 
+                 delta=f"{daily_deficit:.1f}h/일", delta_color="inverse")
+    
     st.markdown("---")
+    
+    # 수면 패턴 인사이트
+    st.markdown("### 🔍 패턴 인사이트")
+    
+    # 스마트폰 사용 분석
+    screen_days = sum([1 for r in recent_data if r['screen_after_10pm']])
+    screen_sleep_avg = sum([r['total_sleep_hours'] for r in recent_data if r['screen_after_10pm']]) / max(screen_days, 1)
+    no_screen_sleep_avg = sum([r['total_sleep_hours'] for r in recent_data if not r['screen_after_10pm']]) / max(len(recent_data) - screen_days, 1)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**📱 스마트폰 사용 영향**")
+        if screen_days > 0:
+            st.write(f"- 밤 10시 이후 사용: {screen_days}일")
+            st.write(f"- 사용일 평균 수면: {screen_sleep_avg:.1f}시간")
+            if len(recent_data) - screen_days > 0:
+                st.write(f"- 미사용일 평균 수면: {no_screen_sleep_avg:.1f}시간")
+                diff = no_screen_sleep_avg - screen_sleep_avg
+                if diff > 0.3:
+                    st.warning(f"⚠️ 스마트폰 사용 시 수면 {diff:.1f}시간 감소!")
+        else:
+            st.success("✅ 야간 스마트폰 사용 없음!")
+    
+    with col2:
+        st.markdown("**☕ 카페인 섭취 영향**")
+        caffeine_days = sum([1 for r in recent_data if r['caffeine_intake']])
+        if caffeine_days > 0:
+            caffeine_sleep_avg = sum([r['total_sleep_hours'] for r in recent_data if r['caffeine_intake']]) / caffeine_days
+            no_caffeine_sleep_avg = sum([r['total_sleep_hours'] for r in recent_data if not r['caffeine_intake']]) / max(len(recent_data) - caffeine_days, 1)
+            
+            st.write(f"- 오후 카페인 섭취: {caffeine_days}일")
+            st.write(f"- 섭취일 평균 수면: {caffeine_sleep_avg:.1f}시간")
+            if len(recent_data) - caffeine_days > 0:
+                st.write(f"- 미섭취일 평균 수면: {no_caffeine_sleep_avg:.1f}시간")
+                diff = no_caffeine_sleep_avg - caffeine_sleep_avg
+                if diff > 0.3:
+                    st.warning(f"⚠️ 카페인 섭취 시 수면 {diff:.1f}시간 감소!")
+        else:
+            st.success("✅ 오후 카페인 섭취 없음!")
+    
+    st.markdown("---")
+    
+    # 감정 태그 분석
+    st.markdown("### 😊 감정 패턴 분석")
+    
+    # 모든 감정 태그 수집
+    all_moods = []
+    for record in recent_data:
+        all_moods.extend(record['mood_tags'])
+    
+    if all_moods:
+        from collections import Counter
+        mood_counts = Counter(all_moods)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**가장 빈번한 감정 (Top 5)**")
+            for mood, count in mood_counts.most_common(5):
+                percentage = (count / len(recent_data)) * 100
+                st.write(f"- {mood}: {count}회 ({percentage:.0f}%)")
+        
+        with col2:
+            st.markdown("**감정별 수면 영향**")
+            
+            # 부정적 감정
+            negative_moods = ['불안', '스트레스', '우울', '긴장', '걱정', '화남', '무기력', '초조']
+            negative_count = sum([1 for mood in all_moods if mood in negative_moods])
+            
+            if negative_count > len(recent_data) * 0.5:
+                st.error(f"⚠️ 부정적 감정 빈도 높음 ({negative_count}회)")
+                st.write("부정적 감정은 수면의 질을 저하시킵니다.")
+                st.write("💡 호흡 운동과 CBT-I를 활용해보세요.")
+            elif negative_count > 0:
+                st.info(f"부정적 감정: {negative_count}회")
+            else:
+                st.success("✅ 안정적인 감정 상태!")
+            
+            # 긍정적 감정
+            positive_moods = ['평온', '만족']
+            positive_count = sum([1 for mood in all_moods if mood in positive_moods])
+            
+            if positive_count > 0:
+                st.success(f"긍정적 감정: {positive_count}회")
+    else:
+        st.info("감정 태그가 기록되지 않았습니다.")
+    
+    st.markdown("---")
+    
+    # 종합 조언
+    st.markdown("### 💡 맞춤형 조언")
     
     if total_debt > 0:
         recovery_days = int(total_debt / 1.5) + 1
         
         st.warning(f"""
-        **⚠️ 수면 빚이 누적되었습니다**
+        **⚠️ 수면 빚 누적**
         
-        - 지난 {len(recent_data)}일간 평균 **{avg_sleep:.1f}시간** 수면
-        - 권장량({recommended_sleep}시간) 대비 **매일 {daily_deficit:.1f}시간 부족**
-        - 총 누적 빚: **{abs(total_debt):.1f}시간**
+        - 지난 {len(recent_data)}일 평균: **{avg_sleep:.1f}시간**
+        - 권장량 대비: **매일 {abs(daily_deficit):.1f}시간 부족**
+        - 총 누적: **{abs(total_debt):.1f}시간**
+        - 회복 예상: **최소 {recovery_days}일**
         
-        **회복 계획:**
-        - 완전 회복까지 최소 **{recovery_days}일** 소요 예상
-        - 매일 8-9시간씩 자면서 점진적 회복 필요
-        - 주말에 몰아서 자는 것보다 매일 조금씩 늘리는 것이 효과적
+        **우선 실천 사항:**
         """)
+        
+        # 맞춤형 조언
+        if screen_days > len(recent_data) * 0.5:
+            st.write("1. 📱 밤 10시 이후 스마트폰 사용 중단")
+        
+        if caffeine_days > len(recent_data) * 0.5:
+            st.write("2. ☕ 오후 2시 이후 카페인 금지")
+        
+        if avg_latency > 30:
+            st.write("3. 🛏️ 20분 규칙 실천 (잠 안 오면 침대 나오기)")
+        
+        if negative_count > len(recent_data) * 0.5:
+            st.write("4. 🫁 매일 취침 전 호흡 운동")
+        
     else:
         st.success(f"""
-        **✅ 건강한 수면 패턴을 유지하고 있습니다!**
+        **✅ 건강한 수면 패턴!**
         
-        - 지난 {len(recent_data)}일간 평균 **{avg_sleep:.1f}시간** 수면
-        - 권장량을 충족하고 있습니다.
-        - 현재 패턴을 계속 유지하세요!
+        - 평균 {avg_sleep:.1f}시간 수면
+        - 권장량 충족
+        - 현재 패턴 유지하세요!
         """)
+    
+    # 최고/최악의 날
+    if len(recent_data) > 1:
+        best_day = max(recent_data, key=lambda x: x['total_sleep_hours'])
+        worst_day = min(recent_data, key=lambda x: x['total_sleep_hours'])
+        
+        st.markdown("---")
+        st.markdown("### 📅 최고/최저 수면일")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"**🏆 최고: {best_day['date']}**")
+            st.write(f"- 수면: {best_day['total_sleep_hours']:.1f}시간")
+            st.write(f"- 감정: {', '.join(best_day['mood_tags']) if best_day['mood_tags'] else '기록 없음'}")
+        
+        with col2:
+            st.markdown(f"**😴 최저: {worst_day['date']}**")
+            st.write(f"- 수면: {worst_day['total_sleep_hours']:.1f}시간")
+            st.write(f"- 감정: {', '.join(worst_day['mood_tags']) if worst_day['mood_tags'] else '기록 없음'}")
 
 # ============================================================================
 # 6. CBT-I 인지 재구조화
@@ -444,17 +573,161 @@ def main():
     
     # 메뉴별 화면
     if menu == "💬 AI 상담":
-        st.title("💬 수면 AI 상담")
+        st.title("💬 수면 교육 상담")
         
         st.info("""
-        **⚠️ 현재 v1.0 베타 버전입니다.**
+        **📚 수면에 관한 과학적 정보를 제공합니다.**
         
-        AI 상담 기능은 다음 업데이트에서 활성화됩니다.
-        지금은 수면 기록, CBT-I 교육, 호흡 운동을 이용해주세요.
+        궁금한 주제를 선택하거나 질문을 입력하세요.
         """)
         
+        # FAQ 섹션
+        st.subheader("자주 묻는 질문")
+        
+        faq = st.selectbox(
+            "주제 선택:",
+            [
+                "카페인이 수면에 미치는 영향",
+                "스마트폰 블루라이트와 수면",
+                "낮잠을 자도 괜찮을까요?",
+                "잠이 안 올 때 해야 할 행동",
+                "수면 환경 최적화",
+                "운동과 수면의 관계"
+            ]
+        )
+        
+        if st.button("답변 보기"):
+            if faq == "카페인이 수면에 미치는 영향":
+                st.markdown("""
+                **☕ 카페인과 수면**
+                
+                **과학적 사실:**
+                - 카페인 반감기: 5-6시간
+                - 오후 2시에 마신 커피 → 밤 10시에도 절반이 체내에 남음
+                - 수면 잠복기(잠드는 시간) 증가
+                - 깊은 수면 단계 감소
+                
+                **권장사항:**
+                - 오후 2시 이후 카페인 섭취 중단
+                - 민감한 사람은 정오 이후 금지
+                - 카페인 함량: 에스프레소(63mg), 아메리카노(150mg), 에너지드링크(80mg)
+                
+                💡 **당신의 데이터와 비교해보세요!**
+                카페인 섭취한 날과 안 한 날의 수면 기록을 확인해보세요.
+                """)
+            
+            elif faq == "스마트폰 블루라이트와 수면":
+                st.markdown("""
+                **📱 블루라이트의 영향**
+                
+                **과학적 메커니즘:**
+                - 블루라이트 → 멜라토닌 분비 억제
+                - 멜라토닌 = 수면 호르몬
+                - 뇌가 "낮"이라고 착각
+                
+                **연구 결과:**
+                - 취침 2시간 전 스마트폰 사용 → 수면 시작 평균 30분 지연
+                - 깊은 수면 20% 감소
+                
+                **실천 방법:**
+                - 취침 1시간 전 완전 차단 (최고)
+                - 야간 모드 / 블루라이트 필터 (차선)
+                - 침실에서 폰 제거 (알람은 시계 사용)
+                
+                ⚠️ **경고:** 침대에서 폰 보기 = 침대를 각성 공간으로 학습시킴
+                """)
+            
+            elif faq == "낮잠을 자도 괜찮을까요?":
+                st.markdown("""
+                **😴 낮잠의 과학**
+                
+                **좋은 낮잠:**
+                - 시간: 20-30분 (파워냅)
+                - 시각: 오후 1-3시
+                - 효과: 집중력↑, 기억력↑, 기분↑
+                
+                **나쁜 낮잠:**
+                - 1시간 이상 → 깊은 수면 진입 → 기상 후 멍함
+                - 오후 4시 이후 → 밤 수면 방해
+                
+                **실천 팁:**
+                - 알람 30분 설정
+                - 완전히 눕지 말고 소파/의자
+                - 커피 낮잠: 자기 직전 커피 한 잔 → 20분 후 카페인 작용 시작
+                """)
+            
+            elif faq == "잠이 안 올 때 해야 할 행동":
+                st.markdown("""
+                **🛏️ 20분 규칙**
+                
+                **절대 하지 말아야 할 것:**
+                - 침대에서 뒤척이며 시간 보내기
+                - 폰으로 시간 확인
+                - "잠들어야 해" 압박
+                
+                **해야 할 것:**
+                1. 20분 후에도 잠 안 오면 → 침대에서 나오기
+                2. 거실/소파로 이동
+                3. 차분한 활동 (독서, 명상, 스트레칭)
+                4. 조명 어둡게 유지
+                5. 졸림 느껴지면 → 다시 침대
+                
+                **원리:**
+                침대 = 수면 장소로만 학습
+                각성 상태에서 침대 = 불면증 강화
+                
+                💡 호흡 운동 메뉴에서 4-7-8 호흡법을 시도해보세요!
+                """)
+            
+            elif faq == "수면 환경 최적화":
+                st.markdown("""
+                **🌡️ 최적 수면 환경**
+                
+                **온도:**
+                - 이상적: 18-20°C
+                - 너무 더우면 → 깊은 수면 방해
+                - 양말 착용 OK (발 혈류↑ → 체온 조절)
+                
+                **조명:**
+                - 완전 암흑 (손 안 보일 정도)
+                - 커튼 차단
+                - 전자기기 LED 가리기
+                
+                **소음:**
+                - 40dB 이하 (속삭임 수준)
+                - 백색소음 OK
+                - 귀마개 고려
+                
+                **침구:**
+                - 매트리스: 중간 정도 단단함
+                - 베개: 목 정렬 유지
+                - 침구 청결 (주 1회 세탁)
+                """)
+            
+            elif faq == "운동과 수면의 관계":
+                st.markdown("""
+                **🏃 운동 타이밍이 중요**
+                
+                **좋은 운동 시간:**
+                - 아침/오후: 수면의 질 향상
+                - 규칙적 운동 → 깊은 수면 증가
+                - 체온↑ → 저녁에 체온↓ → 수면 유도
+                
+                **피해야 할 시간:**
+                - 취침 3시간 전 고강도 운동
+                - 아드레날린 분비 → 각성
+                
+                **권장:**
+                - 주 150분 중강도 유산소
+                - 저녁엔 가벼운 스트레칭/요가
+                - 운동 안 한 날 vs 한 날 수면 비교해보세요
+                """)
+        
+        st.markdown("---")
+        
         # 간단한 채팅 UI
-        user_input = st.text_input("메시지를 입력하세요:")
+        st.subheader("💬 질문하기")
+        user_input = st.text_input("수면 관련 질문을 입력하세요:")
         
         if user_input:
             # 위기 키워드 감지
@@ -464,13 +737,13 @@ def main():
             else:
                 st.chat_message("user").write(user_input)
                 st.chat_message("assistant").write("""
-                현재 베타 버전에서는 제한된 기능만 제공됩니다.
+                현재는 위의 FAQ 주제들을 참고해주세요.
                 
-                다음 기능을 이용해보세요:
-                - 📊 수면 기록
-                - 💤 수면 빚 분석
-                - 🧠 CBT-I 교육
-                - 🫁 호흡 운동
+                더 궁금하신 점은:
+                - 📊 수면 기록으로 패턴 파악
+                - 💤 수면 빚 분석으로 상태 확인
+                - 🧠 CBT-I 교육으로 인지 교정
+                - 🫁 호흡 운동으로 즉시 이완
                 """)
     
     elif menu == "📊 수면 기록":
