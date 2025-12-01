@@ -38,30 +38,38 @@ def init_session_state():
 
 CRISIS_KEYWORDS = [
     "죽고 싶", "자살", "살고 싶지 않", "죽을 것 같", 
-    "존재가 의미 없", "절망", "희망 없", "끝내고 싶"
+    "존재가 의미 없", "절망", "희망 없", "끝내고 싶",
+    "살기 싫", "그만하고 싶", "사라지고 싶", 
+    "존재가 사라졌으면", "의미 없", "소용없",
+    "더 이상 못", "견딜 수 없", "한계"
 ]
 
 CRISIS_RESPONSE = """
 🚨 **긴급 안전 프로토콜 작동**
 
-당신이 지금 매우 힘든 시간을 보내고 있다는 것을 알겠습니다.
+당신이 지금 얼마나 힘든 시간을 보내고 계신지 이해합니다.
+이런 고통을 혼자 견디려 하지 않아도 됩니다.
 
-**즉시 전문가의 도움을 받으세요:**
+**지금 당장 전문가의 도움을 받으세요:**
 
-📞 **자살예방 상담전화: 1393** (24시간 무료)
-📞 **정신건강 위기상담: 1577-0199**
-📞 **생명의 전화: 1588-9191**
-📞 **청소년 상담: 1388**
+📞 **자살예방 상담전화: 1393** (24시간 무료, 익명 보장)
+📞 **정신건강 위기상담: 1577-0199** (24시간)
+📞 **생명의 전화: 1588-9191** (24시간)
+📞 **청소년 상담: 1388** (24시간)
 
 **온라인 상담:**
 - 카카오톡 "다들어줄게" 채널
 - 정신건강복지센터: www.mentalhealth.go.kr
 
+💙 **당신은 혼자가 아닙니다.**
+
+지금 느끼는 고통은 일시적입니다. 
+전문가의 도움으로 반드시 나아질 수 있습니다.
+도움을 요청하는 것은 용기 있는 행동입니다.
+
 ⚠️ **중요:** 
 GINI R.E.S.T.는 전문 치료를 대체할 수 없습니다.
-지금 당장 위의 번호로 전화하거나 가까운 응급실을 방문하세요.
-
-당신의 생명은 소중합니다. 도움을 요청하는 것은 용기입니다.
+당신의 안전이 가장 중요합니다. 지금 바로 위의 번호로 연락하거나 가까운 응급실을 방문하세요.
 """
 
 def check_crisis_keywords(text):
@@ -163,6 +171,32 @@ def add_sleep_record():
         sleep_latency = (sleep_start - bedtime).total_seconds() / 60  # 분 단위
         total_sleep = (wake - sleep_start).total_seconds() / 3600  # 시간 단위
         
+        # 입력 오류 검증
+        error_messages = []
+        
+        if sleep_latency < 0:
+            error_messages.append("⚠️ 실제 잠든 시간이 계획 취침 시간보다 이릅니다. 날짜를 확인해주세요.")
+        
+        if sleep_latency > 180:  # 3시간 이상
+            error_messages.append("⚠️ 잠드는 데 3시간 이상 걸렸습니다. 시간을 다시 확인해주세요.")
+        
+        if total_sleep <= 0:
+            error_messages.append("❌ 수면 시간이 0 이하입니다. 시간 입력을 확인해주세요.")
+        
+        if total_sleep > 16:
+            error_messages.append("⚠️ 수면 시간이 16시간을 초과합니다. 입력을 확인해주세요.")
+        
+        if awake_count > 10:
+            error_messages.append("⚠️ 야간 각성 횟수가 10회 이상입니다. 정확한 값인지 확인해주세요.")
+        
+        # 오류가 있으면 경고 표시
+        if error_messages:
+            for msg in error_messages:
+                st.warning(msg)
+            st.error("입력값을 확인하고 다시 시도해주세요.")
+            return
+        
+        # 정상 입력 - 기록 저장
         record = {
             'date': datetime.now().strftime("%Y-%m-%d"),
             'intended_bedtime': intended_bedtime.strftime("%H:%M"),
@@ -179,6 +213,14 @@ def add_sleep_record():
         
         st.session_state.sleep_data.append(record)
         st.success("✅ 기록이 저장되었습니다!")
+        
+        # 이상 패턴 알림
+        if sleep_latency > 60:
+            st.info("💡 잠드는 데 1시간 이상 걸렸습니다. CBT-I 교육을 참고해보세요.")
+        
+        if total_sleep < 6:
+            st.warning("⚠️ 수면 시간이 6시간 미만입니다. 충분한 수면을 취하도록 노력하세요.")
+        
         st.rerun()
 
 # ============================================================================
