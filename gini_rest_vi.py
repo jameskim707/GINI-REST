@@ -904,6 +904,151 @@ def show_education():
 # 메인 앱
 # ============================================================================
 
+def show_emergency_with_location():
+    """긴급 모드 with 위치 정보"""
+    level = st.session_state.crisis_level
+    pattern = get_crisis_pattern()
+    response = get_crisis_response(level, pattern)
+    
+    st.error(response)
+    
+    st.markdown("---")
+    
+    # 위치 정보 표시
+    st.error("### 📍 당신의 현재 위치 (119에 알려주세요)")
+    
+    # HTML/JavaScript로 위치 가져오기
+    location_html = """
+    <div style="background-color: #ff4444; padding: 20px; border-radius: 10px; color: white;">
+        <h2 style="color: white;">🚨 현재 위치 확인 중...</h2>
+        <div id="location-info" style="font-size: 20px; margin-top: 20px;">
+            <button onclick="getLocation()" style="background: white; color: #ff4444; padding: 15px 30px; font-size: 18px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                📍 내 위치 표시하기
+            </button>
+        </div>
+        <div id="location-result" style="margin-top: 20px; font-size: 18px; line-height: 1.8;"></div>
+    </div>
+    
+    <script>
+    function getLocation() {
+        const locationInfo = document.getElementById('location-info');
+        const locationResult = document.getElementById('location-result');
+        
+        if (navigator.geolocation) {
+            locationInfo.innerHTML = '<p style="font-size: 18px;">⏳ 위치 확인 중...</p>';
+            
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    const lat = position.coords.latitude.toFixed(6);
+                    const lon = position.coords.longitude.toFixed(6);
+                    const accuracy = position.coords.accuracy.toFixed(0);
+                    
+                    locationInfo.innerHTML = '<p style="font-size: 18px;">✅ 위치 확인 완료!</p>';
+                    
+                    locationResult.innerHTML = `
+                        <div style="background: white; color: black; padding: 20px; border-radius: 10px; margin-top: 10px;">
+                            <h3 style="color: #ff4444; margin-top: 0;">📞 119에 이렇게 말하세요:</h3>
+                            <div style="background: #ffffcc; padding: 15px; border-radius: 5px; margin: 10px 0; border: 3px solid #ff4444;">
+                                <p style="font-size: 24px; font-weight: bold; margin: 10px 0; color: #000;">
+                                    "위도: ${lat}"<br>
+                                    "경도: ${lon}"
+                                </p>
+                            </div>
+                            <p style="font-size: 16px; color: #666; margin-top: 15px;">
+                                정확도: 약 ${accuracy}미터<br>
+                                <strong>119에서 이 좌표로 정확한 위치를 찾을 수 있습니다.</strong>
+                            </p>
+                            <button onclick="copyLocation('${lat}', '${lon}')" 
+                                style="background: #ff4444; color: white; padding: 15px 30px; font-size: 16px; 
+                                border: none; border-radius: 5px; cursor: pointer; margin-top: 15px; font-weight: bold;">
+                                📋 좌표 복사하기
+                            </button>
+                            <div id="copy-result" style="margin-top: 10px; color: green; font-weight: bold;"></div>
+                        </div>
+                    `;
+                },
+                function(error) {
+                    let errorMsg = '';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMsg = "❌ 위치 권한이 거부되었습니다.<br>브라우저 설정에서 위치 권한을 허용해주세요.";
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMsg = "❌ 위치 정보를 사용할 수 없습니다.";
+                            break;
+                        case error.TIMEOUT:
+                            errorMsg = "❌ 위치 확인 시간이 초과되었습니다.";
+                            break;
+                    }
+                    locationInfo.innerHTML = `<p style="font-size: 16px;">${errorMsg}</p>`;
+                    locationResult.innerHTML = `
+                        <div style="background: white; color: black; padding: 20px; border-radius: 10px; margin-top: 10px;">
+                            <p style="color: #ff4444; font-weight: bold;">위치를 확인할 수 없는 경우:</p>
+                            <p style="font-size: 16px;">
+                            1. 주변 사람에게 도움 요청<br>
+                            2. 주변 건물이나 간판 이름 확인<br>
+                            3. 도로명 확인<br>
+                            4. 119에 "위치 모름" 상태라고 알림
+                            </p>
+                        </div>
+                    `;
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        } else {
+            locationInfo.innerHTML = '<p style="font-size: 16px;">❌ 이 브라우저는 위치 서비스를 지원하지 않습니다.</p>';
+        }
+    }
+    
+    function copyLocation(lat, lon) {
+        const text = `위도: ${lat}, 경도: ${lon}`;
+        
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(function() {
+                document.getElementById('copy-result').innerHTML = '✅ 복사 완료! 119 통화 시 붙여넣기 하세요.';
+            }, function() {
+                document.getElementById('copy-result').innerHTML = '❌ 복사 실패. 직접 읽어주세요.';
+            });
+        } else {
+            // 구형 브라우저 대응
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                document.getElementById('copy-result').innerHTML = '✅ 복사 완료!';
+            } catch (err) {
+                document.getElementById('copy-result').innerHTML = '❌ 복사 실패. 직접 읽어주세요.';
+            }
+            document.body.removeChild(textArea);
+        }
+    }
+    </script>
+    """
+    
+    st.components.v1.html(location_html, height=500, scrolling=True)
+    
+    st.markdown("---")
+    
+    st.info("""
+    ### 💡 위치 정보 사용 방법
+    
+    1. **"내 위치 표시하기" 버튼 클릭**
+    2. 브라우저에서 위치 권한 허용
+    3. **위도/경도가 표시되면 119에 그대로 읽어주세요**
+    4. 119에서 해당 좌표로 정확한 위치를 찾을 수 있습니다
+    
+    ⚠️ **위치 권한을 허용해야 작동합니다**
+    """)
+    
+    st.markdown("---")
+    
+    if st.button("안전 모드 해제", use_container_width=True):
+        st.session_state.emergency_mode = False
+        st.session_state.crisis_level = 0
+        st.rerun()
+
 def main():
     """메인 앱"""
     init_session_state()
@@ -913,19 +1058,9 @@ def main():
         show_disclaimer()
         return
     
-    # 1순위: Emergency Crisis Mode
+    # 1순위: Emergency Crisis Mode with Location
     if st.session_state.emergency_mode:
-        level = st.session_state.crisis_level
-        pattern = get_crisis_pattern()
-        response = get_crisis_response(level, pattern)
-        
-        st.error(response)
-        st.markdown("---")
-        
-        if st.button("안전 모드 해제"):
-            st.session_state.emergency_mode = False
-            st.session_state.crisis_level = 0
-            st.rerun()
+        show_emergency_with_location()
         return
     
     # 2순위: Sleep Intervention Mode
