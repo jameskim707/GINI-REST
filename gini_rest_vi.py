@@ -62,7 +62,7 @@ def init_session_state():
     if 'last_crisis_time' not in st.session_state:
         st.session_state.last_crisis_time = None
     
-    # ========== V2.5 Exercise Intervention (NEW) ==========
+    # ========== V2.5 Exercise Intervention ==========
     if 'exercise_records' not in st.session_state:
         st.session_state.exercise_records = []
     
@@ -74,6 +74,16 @@ def init_session_state():
     
     if 'exercise_warning_shown' not in st.session_state:
         st.session_state.exercise_warning_shown = False
+    
+    # ========== V2.5 Nutrition Intervention (NEW) ==========
+    if 'meal_records' not in st.session_state:
+        st.session_state.meal_records = []
+    
+    if 'last_meal_time' not in st.session_state:
+        st.session_state.last_meal_time = None
+    
+    if 'nutrition_warnings' not in st.session_state:
+        st.session_state.nutrition_warnings = 0
 
 # ============================================================================
 # 2. ESP v2.5 - Enhanced Crisis Detection Engine
@@ -617,7 +627,401 @@ def show_exercise_dashboard():
         st.rerun()
 
 # ============================================================================
-# 2-3. V2.0 - 경계 시간 관리 및 AI 개입 (유지)
+# 2-3. V2.5 - Nutrition Intervention System (NEW)
+# ============================================================================
+
+def record_meal(meal_type, quality, notes=""):
+    """식사 기록 추가"""
+    meal_record = {
+        'timestamp': datetime.now().isoformat(),
+        'date': datetime.now().date().isoformat(),
+        'meal_type': meal_type,  # "아침", "점심", "저녁", "간식"
+        'quality': quality,  # "양질", "보통", "부실"
+        'notes': notes
+    }
+    
+    st.session_state.meal_records.append(meal_record)
+    st.session_state.last_meal_time = datetime.now()
+    
+    # 최근 90일치만 유지
+    if len(st.session_state.meal_records) > 270:  # 하루 3끼 x 90일
+        st.session_state.meal_records = st.session_state.meal_records[-270:]
+
+def hours_since_last_meal():
+    """마지막 식사 후 경과 시간 (시간 단위)"""
+    if st.session_state.last_meal_time is None:
+        return 999  # 기록 없음
+    
+    last_time = st.session_state.last_meal_time
+    
+    if isinstance(last_time, str):
+        last_time = datetime.fromisoformat(last_time)
+    
+    now = datetime.now()
+    delta = now - last_time
+    hours = delta.total_seconds() / 3600
+    
+    return hours
+
+def get_nutrition_intervention_message():
+    """식사 부족 시 강력한 개입 메시지"""
+    hours = hours_since_last_meal()
+    crisis_pattern = get_crisis_pattern()
+    has_recent_crisis = crisis_pattern['recent_7days'] > 0
+    
+    if hours < 6:
+        return None  # 6시간 이내는 괜찮음
+    
+    elif hours >= 6 and hours < 12:
+        # Level 1: 부드러운 권유
+        return {
+            'level': 1,
+            'message': f"""
+⚠️ **식사 알림**
+
+마지막 식사가 {hours:.1f}시간 전이에요.
+
+슬슬 배고프지 않나요?
+가볍게라도 뭔가 먹는 게 좋아요.
+
+🍎 과일, 🥛 우유, 🍪 간식이라도!
+"""
+        }
+    
+    elif hours >= 12 and hours < 18:
+        # Level 2: 강한 경고
+        return {
+            'level': 2,
+            'message': f"""
+🚨 **야, {hours:.0f}시간째 안 먹었어!**
+
+너 지금 굶고 있는 거야.
+
+식욕 없는 거 안다.
+근데 **네 뇌는 포도당이 필요해.**
+
+안 먹으면:
+- 세로토닌 생성 불가
+- 집중력 저하
+- 기분 더 나빠짐
+
+**선택해:**
+1. 계속 굶어서 더 우울해지기
+2. 지금 뭐라도 먹기
+
+🥚 계란 하나
+🥛 우유 한 잔  
+🍌 바나나 하나
+
+**5분이면 돼. 지금 먹어.**
+"""
+        }
+    
+    elif hours >= 18 and hours < 24:
+        # Level 3: 매우 강력한 개입
+        message = f"""
+🔴 **{hours:.0f}시간째 안 먹었어. 이거 심각해.**
+
+너 지금 스스로를 망가뜨리고 있어.
+
+**과학적 사실:**
+- 18시간 공복 → 뇌 기능 30% 저하
+- 판단력 흐려짐
+- 우울감 악화
+"""
+        
+        if has_recent_crisis:
+            message += f"""
+
+📊 **데이터 보여?**
+- 공복: {hours:.0f}시간
+- 최근 위기 신호: {crisis_pattern['recent_7days']}회
+
+**안 먹으면 더 나빠져.**
+"""
+        
+        message += """
+
+식욕 없는 거 이해해.
+근데 **지금은 억지로라도 먹어야 해.**
+
+**최소한 이거라도:**
+- 🥛 우유 한 잔 (단백질)
+- 🍌 바나나 (빠른 에너지)  
+- 🥚 삶은 계란 (영양)
+
+**완벽한 식사 아니어도 돼.**
+**뭐라도 먹는 게 중요해.**
+
+**지금. 일어나서. 먹어.**
+"""
+        
+        return {
+            'level': 3,
+            'message': message
+        }
+    
+    else:  # 24시간 이상
+        # Level 4: 최고 강도
+        message = f"""
+❌ **{hours:.0f}시간째 안 먹었어. 하루 넘었어.**
+
+**이건 자해야.**
+
+너 지금 네 몸을 죽이고 있어.
+우울증 이기려면:
+- 수면 ✓
+- 운동 ✓  
+- **식사 ✗ ← 여기서 무너지고 있어**
+
+'식욕 없어', '나중에 먹을게'
+→ **이거 다 핑계야.**
+
+**하루 안 먹으면:**
+- 뇌가 비상 모드 진입
+- 스트레스 호르몬 폭증
+- 우울증 악화
+- 회복 불가능
+"""
+        
+        if has_recent_crisis:
+            message += f"""
+
+📊 **경고 데이터:**
+- 공복: {hours:.0f}시간 (위험!)
+- 위기 신호: {crisis_pattern['recent_7days']}회
+- 운동: {days_since_last_exercise()}일 미실시
+
+**모든 게 무너지고 있어.**
+"""
+        
+        message += """
+
+**지금 이 메시지 보고 5분 안에**
+**뭐라도 입에 넣지 않으면,**
+**너는 내일도 똑같을 거야.**
+
+냉장고 열어.
+편의점 가.
+배달 시켜.
+
+**뭐든 좋아. 지금 먹어.**
+
+🆘 **24시간 이상 식사 안 한 상태는 의학적 개입이 필요합니다.**
+"""
+        
+        return {
+            'level': 4,
+            'message': message
+        }
+
+def check_nutrition_intervention():
+    """영양 개입 필요 여부 체크"""
+    hours = hours_since_last_meal()
+    
+    if hours < 6:
+        return None
+    
+    return get_nutrition_intervention_message()
+
+def show_nutrition_intervention():
+    """영양 개입 화면 표시"""
+    intervention = get_nutrition_intervention_message()
+    
+    if intervention is None:
+        return
+    
+    level = intervention['level']
+    message = intervention['message']
+    
+    if level == 1:
+        st.warning(message)
+    elif level == 2:
+        st.error(message)
+    elif level >= 3:
+        st.error(message)
+    
+    st.markdown("---")
+    
+    # 빠른 식사 기록
+    st.subheader("🍽️ 지금 먹었어?")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        meal_type = st.selectbox("식사 종류", ["아침", "점심", "저녁", "간식/음료"])
+        quality = st.selectbox("양과 질", ["양질 (제대로 먹음)", "보통", "부실 (조금만)"])
+    
+    with col2:
+        notes = st.text_input("뭐 먹었어? (선택사항)", placeholder="예: 계란, 우유")
+    
+    if st.button("✅ 식사 완료!", use_container_width=True, type="primary"):
+        quality_short = quality.split()[0]  # "양질", "보통", "부실"
+        record_meal(meal_type, quality_short, notes)
+        st.success("🎉 잘했어! 먹는 게 회복이다!")
+        if quality_short == "양질":
+            st.balloons()
+        time.sleep(2)
+        st.rerun()
+
+def show_nutrition_dashboard():
+    """영양 관리 대시보드"""
+    st.subheader("🍽️ 영양 관리 대시보드")
+    
+    hours = hours_since_last_meal()
+    total_meals = len(st.session_state.meal_records)
+    
+    # 오늘 식사 횟수
+    today = datetime.now().date().isoformat()
+    today_meals = [m for m in st.session_state.meal_records if m['date'] == today]
+    
+    # 최근 7일 평균
+    week_ago = (datetime.now() - timedelta(days=7)).date().isoformat()
+    recent_meals = [m for m in st.session_state.meal_records if m['date'] >= week_ago]
+    avg_meals_per_day = len(recent_meals) / 7 if recent_meals else 0
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if hours < 6:
+            st.metric("마지막 식사", f"{hours:.1f}시간 전 ✅")
+        elif hours < 12:
+            st.metric("마지막 식사", f"{hours:.0f}시간 전 ⚠️")
+        elif hours < 999:
+            st.metric("마지막 식사", f"{hours:.0f}시간 전 🚨")
+        else:
+            st.metric("마지막 식사", "기록 없음")
+    
+    with col2:
+        st.metric("오늘 식사", f"{len(today_meals)}회")
+    
+    with col3:
+        st.metric("7일 평균", f"{avg_meals_per_day:.1f}회/일")
+    
+    with col4:
+        if hours < 6:
+            status = "✅ 양호"
+        elif hours < 12:
+            status = "⚠️ 주의"
+        elif hours < 18:
+            status = "🚨 경고"
+        else:
+            status = "❌ 위험"
+        st.metric("상태", status)
+    
+    st.markdown("---")
+    
+    # 영양-정신건강 연계
+    crisis_pattern = get_crisis_pattern()
+    
+    if hours >= 12 and crisis_pattern['recent_7days'] > 0:
+        st.error(f"""
+        ⚠️ **위험 신호 감지**
+        
+        - 공복 시간: {hours:.0f}시간
+        - 최근 위기 신호: {crisis_pattern['recent_7days']}회
+        
+        **식사 부족이 정신건강을 악화시키고 있습니다.**
+        지금 당장 무언가 드세요.
+        """)
+    
+    # 영양 가이드
+    st.markdown("---")
+    st.subheader("💡 우울증 회복에 좋은 음식")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **뇌 건강에 좋은 영양소:**
+        
+        🐟 **오메가-3** (생선, 견과류)
+        - 뇌세포 보호
+        - 항염 효과
+        
+        🥚 **단백질** (계란, 닭가슴살, 두부)
+        - 세로토닌 생성 재료
+        - 포만감 유지
+        
+        🍌 **복합 탄수화물** (통곡물, 바나나)
+        - 혈당 안정
+        - 에너지 공급
+        """)
+    
+    with col2:
+        st.markdown("""
+        **기분 개선 영양소:**
+        
+        ☀️ **비타민D** (계란 노른자, 버섯)
+        - 기분 조절
+        - 면역력 강화
+        
+        🥬 **엽산** (녹색 채소, 콩)
+        - 우울감 완화
+        
+        🥛 **칼슘/마그네슘** (우유, 바나나)
+        - 신경 안정
+        - 수면 개선
+        """)
+    
+    st.info("""
+    💡 **식욕 없을 때 간단한 식사:**
+    - 🥛 우유 + 🍌 바나나 (5분)
+    - 🥚 삶은 계란 + 🍞 식빵 (10분)
+    - 🥗 그릭 요거트 + 🥜 견과류 (3분)
+    - 🍵 단백질 쉐이크 (2분)
+    
+    **완벽한 식사 아니어도 괜찮아요. 뭐라도 먹는 게 중요합니다.**
+    """)
+    
+    # 최근 식사 기록
+    if len(st.session_state.meal_records) > 0:
+        st.markdown("---")
+        st.subheader("📋 최근 식사 기록")
+        
+        recent_10 = st.session_state.meal_records[-10:]
+        
+        for record in reversed(recent_10):
+            timestamp = datetime.fromisoformat(record['timestamp']).strftime("%m/%d %H:%M")
+            meal_type = record['meal_type']
+            quality = record['quality']
+            notes = record.get('notes', '')
+            
+            quality_emoji = "✅" if quality == "양질" else "⚠️" if quality == "보통" else "❌"
+            
+            with st.expander(f"{quality_emoji} {timestamp} - {meal_type} ({quality})"):
+                if notes:
+                    st.write(f"**내용:** {notes}")
+                st.write(f"**시각:** {timestamp}")
+                st.write(f"**품질:** {quality}")
+    
+    st.markdown("---")
+    
+    # 식사 기록 추가
+    st.subheader("➕ 식사 기록 추가")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        meal_type = st.selectbox("식사 종류", ["아침", "점심", "저녁", "간식/음료"], key="main_meal_type")
+    
+    with col2:
+        quality = st.selectbox("양과 질", ["양질 (제대로)", "보통", "부실 (조금)"], key="main_quality")
+    
+    with col3:
+        notes = st.text_input("메뉴 (선택)", placeholder="예: 계란 2개, 우유", key="main_notes")
+    
+    if st.button("✅ 식사 기록 추가", use_container_width=True, type="primary"):
+        quality_short = quality.split()[0]
+        record_meal(meal_type, quality_short, notes)
+        st.success("🎉 식사 기록이 추가되었습니다!")
+        if quality_short == "양질":
+            st.balloons()
+        time.sleep(1)
+        st.rerun()
+
+# ============================================================================
+# 2-4. V2.0 - 경계 시간 관리 및 AI 개입 (유지)
 # ============================================================================
 
 def reset_daily_state():
@@ -814,7 +1218,7 @@ def show_disclaimer():
     """면책 조항"""
     st.title("🌙 GINI R.E.S.T.")
     st.subheader("Human Recovery AI System v2.5")
-    st.caption("✅ Phase 1 COMPLETE: Crisis Engine + Exercise Intervention")
+    st.caption("✅ Phase 1 COMPLETE: Crisis + Exercise + Nutrition")
     
     st.markdown("---")
     
@@ -822,16 +1226,20 @@ def show_disclaimer():
     ### ⚠️ 이용 약관 및 면책 조항
     
     #### 1. 서비스의 성격
-    - 본 서비스는 **수면 패턴 관리 및 운동 습관 형성 도구**입니다.
+    - 본 서비스는 **정신건강 회복 지원 도구**입니다.
+    - 수면, 운동, 영양 패턴을 관리합니다.
     - **의학적 진단, 치료, 상담을 제공하지 않습니다.**
     
-    #### 2. AI 개입 기능 (V2.5 Phase 1)
-    - 다단계 위기 감지 시스템
-    - **강력한 운동 개입 시스템** (직설적이고 강한 메시지 포함)
-    - 사용자의 안전과 회복을 위한 설계
+    #### 2. AI 개입 기능 (V2.5 Phase 1 Complete)
+    - ✅ 다단계 위기 감지 시스템
+    - ✅ 강력한 운동 개입 시스템
+    - ✅ 강력한 영양 개입 시스템
+    - ✅ GPS 위치 자동 표시 (긴급 상황용)
+    - 직설적이고 강한 메시지 포함 (회복을 위한 설계)
     
     #### 3. 사용자의 책임
     - 심각한 정신건강 문제가 있다면 **반드시 전문가와 상담**하세요.
+    - 24시간 이상 식사를 하지 않았다면 의학적 개입이 필요합니다.
     - 응급 상황 시 즉시 119 또는 1393으로 연락하세요.
     
     #### 4. 데이터
@@ -917,10 +1325,21 @@ def show_emergency_with_location():
     # 위치 정보 표시
     st.error("### 📍 당신의 현재 위치 (119에 알려주세요)")
     
+    # 119 바로 전화 버튼 (Raira 제안 #3)
+    st.markdown("""
+    <div style="text-align: center; margin: 20px 0;">
+        <a href="tel:119" style="background: #ff0000; color: white; padding: 20px 40px; 
+           font-size: 24px; font-weight: bold; text-decoration: none; border-radius: 10px; 
+           display: inline-block; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+            📞 119 긴급 전화걸기
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+    
     # HTML/JavaScript로 위치 가져오기
     location_html = """
     <div style="background-color: #ff4444; padding: 20px; border-radius: 10px; color: white;">
-        <h2 style="color: white;">🚨 현재 위치 확인 중...</h2>
+        <h2 style="color: white;">🚨 현재 위치 확인</h2>
         <div id="location-info" style="font-size: 20px; margin-top: 20px;">
             <button onclick="getLocation()" style="background: white; color: #ff4444; padding: 15px 30px; font-size: 18px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
                 📍 내 위치 표시하기
@@ -943,6 +1362,18 @@ def show_emergency_with_location():
                     const lon = position.coords.longitude.toFixed(6);
                     const accuracy = position.coords.accuracy.toFixed(0);
                     
+                    // Raira 제안 #4: 정확도 해석
+                    let accuracyText = '';
+                    if (accuracy < 50) {
+                        accuracyText = '매우 정확 (오차 50m 이내)';
+                    } else if (accuracy < 200) {
+                        accuracyText = '정확 (오차 200m 이내)';
+                    } else if (accuracy < 1000) {
+                        accuracyText = '보통 (오차 1km 이내)';
+                    } else {
+                        accuracyText = '부정확 (오차 ' + (accuracy/1000).toFixed(1) + 'km 이상)<br>실내, 지하, 건물 밀집 지역일 수 있습니다.';
+                    }
+                    
                     locationInfo.innerHTML = '<p style="font-size: 18px;">✅ 위치 확인 완료!</p>';
                     
                     locationResult.innerHTML = `
@@ -955,7 +1386,7 @@ def show_emergency_with_location():
                                 </p>
                             </div>
                             <p style="font-size: 16px; color: #666; margin-top: 15px;">
-                                정확도: 약 ${accuracy}미터<br>
+                                <strong>위치 정확도:</strong> ${accuracyText}<br>
                                 <strong>119에서 이 좌표로 정확한 위치를 찾을 수 있습니다.</strong>
                             </p>
                             <button onclick="copyLocation('${lat}', '${lon}')" 
@@ -968,28 +1399,72 @@ def show_emergency_with_location():
                     `;
                 },
                 function(error) {
+                    // Raira 제안 #1, #2: GPS 실패 원인 상세 안내
                     let errorMsg = '';
+                    let solutionMsg = '';
+                    
                     switch(error.code) {
                         case error.PERMISSION_DENIED:
-                            errorMsg = "❌ 위치 권한이 거부되었습니다.<br>브라우저 설정에서 위치 권한을 허용해주세요.";
+                            errorMsg = "❌ 위치 권한이 거부되었습니다.";
+                            solutionMsg = `
+                                <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #ff4444;">
+                                    <h4 style="color: #ff4444; margin-top: 0;">🔧 해결 방법:</h4>
+                                    <p style="color: #000; font-size: 15px; line-height: 1.6;">
+                                        <strong>📱 안드로이드:</strong><br>
+                                        설정 → 앱 → Chrome(또는 사용 중인 브라우저) → 권한 → 위치 → <strong>'허용'</strong><br><br>
+                                        
+                                        <strong>🍎 iOS:</strong><br>
+                                        설정 → Safari(또는 Chrome) → 위치 → <strong>'허용'</strong><br><br>
+                                        
+                                        <strong>💻 PC/Mac:</strong><br>
+                                        브라우저 주소창 왼쪽 자물쇠 아이콘 클릭 → 위치 → <strong>'허용'</strong>
+                                    </p>
+                                </div>
+                            `;
                             break;
                         case error.POSITION_UNAVAILABLE:
                             errorMsg = "❌ 위치 정보를 사용할 수 없습니다.";
+                            solutionMsg = `
+                                <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #ff4444;">
+                                    <h4 style="color: #ff4444; margin-top: 0;">🔧 확인사항:</h4>
+                                    <p style="color: #000; font-size: 15px; line-height: 1.6;">
+                                        ✓ <strong>스마트폰 위치 서비스(GPS) 켜져 있나요?</strong><br>
+                                        ✓ <strong>비행기 모드가 꺼져 있나요?</strong><br>
+                                        ✓ <strong>실내나 지하가 아닌가요?</strong> (창문 근처로 이동)<br>
+                                        ✓ <strong>Wi-Fi나 모바일 데이터가 켜져 있나요?</strong>
+                                    </p>
+                                </div>
+                            `;
                             break;
                         case error.TIMEOUT:
                             errorMsg = "❌ 위치 확인 시간이 초과되었습니다.";
+                            solutionMsg = `
+                                <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #ff4444;">
+                                    <h4 style="color: #ff4444; margin-top: 0;">🔧 다시 시도:</h4>
+                                    <p style="color: #000; font-size: 15px; line-height: 1.6;">
+                                        ✓ 창문 근처나 <strong>실외로 이동</strong><br>
+                                        ✓ 잠시 후 <strong>'내 위치 표시하기' 버튼 다시 클릭</strong><br>
+                                        ✓ GPS 신호가 약한 환경일 수 있습니다
+                                    </p>
+                                </div>
+                            `;
                             break;
                     }
+                    
                     locationInfo.innerHTML = `<p style="font-size: 16px;">${errorMsg}</p>`;
                     locationResult.innerHTML = `
                         <div style="background: white; color: black; padding: 20px; border-radius: 10px; margin-top: 10px;">
-                            <p style="color: #ff4444; font-weight: bold;">위치를 확인할 수 없는 경우:</p>
-                            <p style="font-size: 16px;">
-                            1. 주변 사람에게 도움 요청<br>
-                            2. 주변 건물이나 간판 이름 확인<br>
-                            3. 도로명 확인<br>
-                            4. 119에 "위치 모름" 상태라고 알림
-                            </p>
+                            ${solutionMsg}
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                                <h4 style="color: #ff4444; margin-top: 0;">🆘 위치를 확인할 수 없는 경우:</h4>
+                                <p style="color: #000; font-size: 16px; line-height: 1.8;">
+                                    1. <strong>주변 사람에게 도움 요청</strong><br>
+                                    2. <strong>주변 건물이나 간판 이름</strong> 확인<br>
+                                    3. <strong>도로명</strong> 확인<br>
+                                    4. 119에 <strong>"위치 모름"</strong> 상태라고 알림<br>
+                                    5. 119는 <strong>통화 중에도 위치 추적</strong> 가능합니다
+                                </p>
+                            </div>
                         </div>
                     `;
                 },
@@ -997,6 +1472,12 @@ def show_emergency_with_location():
             );
         } else {
             locationInfo.innerHTML = '<p style="font-size: 16px;">❌ 이 브라우저는 위치 서비스를 지원하지 않습니다.</p>';
+            locationResult.innerHTML = `
+                <div style="background: white; color: black; padding: 20px; border-radius: 10px; margin-top: 10px;">
+                    <p style="color: #ff4444; font-weight: bold;">최신 브라우저를 사용해주세요:</p>
+                    <p style="font-size: 16px;">Chrome, Safari, Firefox, Edge 등</p>
+                </div>
+            `;
         }
     }
     
@@ -1010,7 +1491,6 @@ def show_emergency_with_location():
                 document.getElementById('copy-result').innerHTML = '❌ 복사 실패. 직접 읽어주세요.';
             });
         } else {
-            // 구형 브라우저 대응
             const textArea = document.createElement("textarea");
             textArea.value = text;
             document.body.appendChild(textArea);
@@ -1027,19 +1507,20 @@ def show_emergency_with_location():
     </script>
     """
     
-    st.components.v1.html(location_html, height=500, scrolling=True)
+    st.components.v1.html(location_html, height=650, scrolling=True)
     
     st.markdown("---")
     
     st.info("""
     ### 💡 위치 정보 사용 방법
     
-    1. **"내 위치 표시하기" 버튼 클릭**
-    2. 브라우저에서 위치 권한 허용
-    3. **위도/경도가 표시되면 119에 그대로 읽어주세요**
-    4. 119에서 해당 좌표로 정확한 위치를 찾을 수 있습니다
+    1. **위에 "119 긴급 전화걸기" 버튼을 먼저 누르세요** (모바일에서 바로 전화 연결)
+    2. **"내 위치 표시하기" 버튼 클릭**
+    3. 브라우저에서 위치 권한 허용
+    4. **위도/경도가 표시되면 119에 그대로 읽어주세요**
+    5. 119에서 해당 좌표로 정확한 위치를 찾을 수 있습니다
     
-    ⚠️ **위치 권한을 허용해야 작동합니다**
+    ⚠️ **위치가 안 잡히면 위의 해결 방법을 따라주세요**
     """)
     
     st.markdown("---")
@@ -1068,11 +1549,16 @@ def main():
         show_intervention()
         return
     
-    # 3순위: Exercise Intervention Check
+    # 3순위: Exercise Intervention Check (Level 2+)
     exercise_intervention = check_exercise_intervention()
     if exercise_intervention and exercise_intervention['level'] >= 2:
-        # Level 2 이상만 전체 화면 개입
         show_exercise_intervention()
+        return
+    
+    # 4순위: Nutrition Intervention Check (Level 2+)
+    nutrition_intervention = check_nutrition_intervention()
+    if nutrition_intervention and nutrition_intervention['level'] >= 2:
+        show_nutrition_intervention()
         return
     
     # 경계 구역 체크
@@ -1089,13 +1575,14 @@ def main():
     with st.sidebar:
         st.title("🌙 GINI R.E.S.T.")
         st.caption("v2.5 Phase 1 Complete ✅")
-        st.caption("Crisis + Exercise")
+        st.caption("Crisis + Exercise + Nutrition")
         
         st.markdown("---")
         
         # 상태 표시
         pattern = get_crisis_pattern()
         days_no_exercise = days_since_last_exercise()
+        hours_no_meal = hours_since_last_meal()
         
         # 위기 상태
         if pattern['trend'] == 'worsening':
@@ -1113,6 +1600,14 @@ def main():
         else:
             st.error(f"🚨 운동: {days_no_exercise}일 미실시")
         
+        # 영양 상태 (NEW)
+        if hours_no_meal < 6:
+            st.success("🍽️ 식사: 양호 ✅")
+        elif hours_no_meal < 12:
+            st.warning(f"⚠️ 식사: {hours_no_meal:.0f}시간 전")
+        else:
+            st.error(f"🚨 식사: {hours_no_meal:.0f}시간 전")
+        
         # 수면 상태
         if st.session_state.target_bedtime:
             st.info(f"🎯 목표: {st.session_state.target_bedtime.strftime('%H:%M')}")
@@ -1124,7 +1619,8 @@ def main():
             [
                 "🎯 V2.5 설정",
                 "📊 위기 대시보드",
-                "🏃 운동 대시보드",  # NEW
+                "🏃 운동 대시보드",
+                "🍽️ 영양 대시보드",  # NEW
                 "💬 AI 상담",
                 "📊 수면 기록",
                 "💤 수면 분석",
@@ -1138,15 +1634,25 @@ def main():
         st.caption(f"위기: {pattern['total_count']}회")
         st.caption(f"운동: {len(st.session_state.exercise_records)}일")
         st.caption(f"연속: {st.session_state.exercise_streak}일 🔥")
+        st.caption(f"식사: {len(st.session_state.meal_records)}회")  # NEW
         
         if st.button("⚠️ 긴급 도움"):
             st.session_state.emergency_mode = True
             st.session_state.crisis_level = 3
             st.rerun()
     
-    # Level 1 운동 경고 (상단 띠)
+    # Level 1 경고 (상단 띠)
+    warnings_shown = 0
+    
+    # 운동 Level 1 경고
     if exercise_intervention and exercise_intervention['level'] == 1:
         st.warning(exercise_intervention['message'])
+        warnings_shown += 1
+    
+    # 영양 Level 1 경고 (NEW)
+    if nutrition_intervention and nutrition_intervention['level'] == 1:
+        st.warning(nutrition_intervention['message'])
+        warnings_shown += 1
     
     # 메뉴별 화면
     if menu == "🎯 V2.5 설정":
@@ -1168,7 +1674,7 @@ def main():
             st.metric("운동 일수", f"{len(st.session_state.exercise_records)}일")
         
         with col4:
-            st.metric("연속 운동", f"{st.session_state.exercise_streak}일")
+            st.metric("식사 기록", f"{len(st.session_state.meal_records)}회")
     
     elif menu == "📊 위기 대시보드":
         st.title("📊 위기 대시보드")
@@ -1177,6 +1683,10 @@ def main():
     elif menu == "🏃 운동 대시보드":
         st.title("🏃 운동 대시보드")
         show_exercise_dashboard()
+    
+    elif menu == "🍽️ 영양 대시보드":
+        st.title("🍽️ 영양 대시보드")
+        show_nutrition_dashboard()
     
     elif menu == "💬 AI 상담":
         show_education()
