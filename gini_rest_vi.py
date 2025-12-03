@@ -84,6 +84,22 @@ def init_session_state():
     
     if 'nutrition_warnings' not in st.session_state:
         st.session_state.nutrition_warnings = 0
+    
+    # ========== V3.0 Social Connection Engine ==========
+    if 'social_interactions' not in st.session_state:
+        st.session_state.social_interactions = []
+    
+    if 'last_social_contact' not in st.session_state:
+        st.session_state.last_social_contact = None
+    
+    if 'isolation_score' not in st.session_state:
+        st.session_state.isolation_score = 0
+    
+    if 'isolation_history' not in st.session_state:
+        st.session_state.isolation_history = []
+    
+    if 'social_warnings' not in st.session_state:
+        st.session_state.social_warnings = 0
 
 # ============================================================================
 # 2. ESP v2.5 - Enhanced Crisis Detection Engine
@@ -1021,6 +1037,782 @@ def show_nutrition_dashboard():
         st.rerun()
 
 # ============================================================================
+# 3. V3.0 - Social Connection Engine (5 Modules)
+# ============================================================================
+
+# ============================================================================
+# 3-1. Module 1: Isolation Detection (고립 감지 모듈)
+# ============================================================================
+
+# 고립 감지 키워드
+ISOLATION_KEYWORDS = {
+    'high': [
+        '아무도 없', '혼자', '외롭', '고립', '단절',
+        '연락 안', '친구 없', '말 안 해', '대화 안',
+        'sns 삭제', '연락 차단', '사람 피곤'
+    ],
+    'medium': [
+        '관심 없', '무시', '혼자 있고 싶', '멀어',
+        '소외', '이해 못', '공감 안', '거리'
+    ],
+    'low': [
+        '피곤해', '귀찮', '나가기 싫', '만나기 싫',
+        '집에만', '연락하기 싫'
+    ]
+}
+
+def detect_isolation_keywords(text):
+    """텍스트에서 고립 키워드 감지"""
+    text = text.lower()
+    
+    detected = {
+        'high': [],
+        'medium': [],
+        'low': []
+    }
+    
+    for level, keywords in ISOLATION_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in text:
+                detected[level].append(keyword)
+    
+    return detected
+
+def calculate_isolation_score():
+    """고립 점수 계산 (0-100)"""
+    score = 0
+    
+    # 1. 마지막 사회적 접촉 경과 시간
+    if st.session_state.last_social_contact:
+        last_contact = st.session_state.last_social_contact
+        if isinstance(last_contact, str):
+            last_contact = datetime.fromisoformat(last_contact)
+        
+        days_since = (datetime.now() - last_contact).days
+        
+        if days_since >= 7:
+            score += 30  # 일주일 이상
+        elif days_since >= 3:
+            score += 20  # 3일 이상
+        elif days_since >= 1:
+            score += 10  # 하루 이상
+    else:
+        score += 40  # 기록 없음
+    
+    # 2. 위기 패턴 연동
+    crisis_pattern = get_crisis_pattern()
+    if crisis_pattern['recent_7days'] >= 3:
+        score += 20
+    elif crisis_pattern['recent_7days'] >= 1:
+        score += 10
+    
+    # 3. 운동 패턴 (고립은 활동 감소로 이어짐)
+    days_no_exercise = days_since_last_exercise()
+    if days_no_exercise >= 7:
+        score += 15
+    elif days_no_exercise >= 3:
+        score += 10
+    
+    # 4. 영양 패턴 (고립은 식사 불규칙으로 이어짐)
+    hours_no_meal = hours_since_last_meal()
+    if hours_no_meal >= 18:
+        score += 10
+    elif hours_no_meal >= 12:
+        score += 5
+    
+    # 5. 최근 고립 키워드 언급
+    recent_warnings = st.session_state.social_warnings
+    score += min(recent_warnings * 5, 15)
+    
+    return min(score, 100)
+
+def update_isolation_score():
+    """고립 점수 업데이트 및 이력 저장"""
+    score = calculate_isolation_score()
+    st.session_state.isolation_score = score
+    
+    # 이력 저장
+    isolation_record = {
+        'timestamp': datetime.now().isoformat(),
+        'score': score,
+        'days_since_contact': (datetime.now() - st.session_state.last_social_contact).days if st.session_state.last_social_contact else 999
+    }
+    
+    st.session_state.isolation_history.append(isolation_record)
+    
+    # 최근 30개만 유지
+    if len(st.session_state.isolation_history) > 30:
+        st.session_state.isolation_history = st.session_state.isolation_history[-30:]
+    
+    return score
+
+def get_isolation_level():
+    """고립 수준 판단"""
+    score = st.session_state.isolation_score
+    
+    if score >= 85:
+        return {'level': 3, 'label': '고위험', 'color': 'red'}
+    elif score >= 70:
+        return {'level': 2, 'label': '중위험', 'color': 'orange'}
+    elif score >= 40:
+        return {'level': 1, 'label': '저위험', 'color': 'yellow'}
+    else:
+        return {'level': 0, 'label': '안정', 'color': 'green'}
+
+# ============================================================================
+# 3-2. Module 2: Social Correction Engine (사회 연결 개입 엔진)
+# ============================================================================
+
+def get_social_intervention_message():
+    """고립 수준별 개입 메시지"""
+    isolation_level = get_isolation_level()
+    level = isolation_level['level']
+    score = st.session_state.isolation_score
+    
+    days_since = 999
+    if st.session_state.last_social_contact:
+        last_contact = st.session_state.last_social_contact
+        if isinstance(last_contact, str):
+            last_contact = datetime.fromisoformat(last_contact)
+        days_since = (datetime.now() - last_contact).days
+    
+    crisis_pattern = get_crisis_pattern()
+    
+    if level == 0:
+        return None
+    
+    elif level == 1:
+        # Level 1: 저위험 - 부드러운 권유
+        return {
+            'level': 1,
+            'message': f"""
+🟢 **사회적 연결 알림**
+
+최근 {days_since}일간 사회적 접촉이 적었어요.
+
+**작은 연결부터 시작해볼까요?**
+
+✨ **오늘 할 수 있는 것:**
+- 📱 좋아요 하나만 눌러보기
+- 💬 댓글 하나 남겨보기
+- 🚶 사람 있는 곳으로 살짝 산책
+
+**→ 작은 행동이 마음을 따뜻하게 해요.**
+"""
+        }
+    
+    elif level == 2:
+        # Level 2: 중위험 - 적극 권유
+        message = f"""
+🟡 **사회적 연결 경고 (고립 점수: {score}/100)**
+
+{days_since}일째 사회적 접촉이 없어요.
+고립은 우울증을 악화시킵니다.
+
+**지금 관심받을 수 있는 공간으로 가세요:**
+
+📱 **디지털 연결:**
+- 유튜브 커뮤니티 댓글
+- 인스타 릴스 보기
+- 카톡 오픈채팅 (관심 분야)
+- 건강/우울증 커뮤니티
+
+👥 **현실 연결:**
+- 카페/편의점 가기
+- 공원 산책
+- 도서관 방문
+
+💬 **친한 사람 한 명에게:**
+"잘 지내?" 이 한 마디만 보내도 돼요.
+"""
+        
+        if crisis_pattern['recent_7days'] > 0:
+            message += f"""
+
+⚠️ **위험 신호:**
+- 고립: {days_since}일
+- 위기 신호: {crisis_pattern['recent_7days']}회
+
+**고립 + 위기 = 매우 위험합니다.**
+"""
+        
+        return {
+            'level': 2,
+            'message': message
+        }
+    
+    else:  # level == 3
+        # Level 3: 고위험 - 강력한 개입
+        message = f"""
+🔴 **사회적 고립 위험 (점수: {score}/100)**
+
+{days_since}일째 아무도 안 만났어요.
+**당신은 지금 혼자가 아닙니다.**
+**지금 바로 연결될 수 있어요.**
+
+**강제 미션 (하나만 선택):**
+
+1️⃣ **사람 있는 곳으로 30분 산책**
+   - 카페, 편의점, 공원
+   - 사람이 보이는 곳
+   - 대화 안 해도 괜찮아요
+   - **사람의 존재만으로도 회복됩니다**
+
+2️⃣ **SNS에 1회 참여**
+   - 좋아요, 댓글, 게시물
+   - 무엇이든 괜찮아요
+   - **관심을 받는 경험이 필요해요**
+
+3️⃣ **전화 한 통**
+   - 가족, 친구, 지인
+   - "잘 지내?" 이 말만으로도 충분
+"""
+        
+        if crisis_pattern['recent_7days'] >= 2:
+            message += f"""
+
+🚨 **즉각 개입 필요:**
+- 고립: {days_since}일
+- 위기 신호: {crisis_pattern['recent_7days']}회
+- 고립 점수: {score}/100
+
+**Crisis Engine과 연동됩니다.**
+혼자 견디지 마세요.
+
+📞 정신건강 상담: 1577-0199
+📞 생명의 전화: 1588-9191
+"""
+        
+        message += """
+
+💙 **깐부가 말했던 진실:**
+"사람의 관심이 필요하다.
+그곳으로 가라."
+
+**지금 움직이세요.**
+"""
+        
+        return {
+            'level': 3,
+            'message': message
+        }
+
+def check_social_intervention():
+    """사회적 연결 개입 필요 여부 체크"""
+    update_isolation_score()
+    isolation_level = get_isolation_level()
+    
+    if isolation_level['level'] == 0:
+        return None
+    
+    return get_social_intervention_message()
+
+def show_social_intervention():
+    """사회적 연결 개입 화면"""
+    intervention = get_social_intervention_message()
+    
+    if intervention is None:
+        return
+    
+    level = intervention['level']
+    message = intervention['message']
+    
+    if level == 1:
+        st.warning(message)
+    elif level == 2:
+        st.error(message)
+    else:
+        st.error(message)
+    
+    st.markdown("---")
+    
+    # 사회적 접촉 기록
+    st.subheader("👥 오늘 사회적 접촉 있었나요?")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        contact_type = st.selectbox(
+            "접촉 유형",
+            ["대면 만남", "전화/영상", "SNS 댓글", "단톡방", "문자", "기타"]
+        )
+    
+    with col2:
+        quality = st.selectbox(
+            "느낌",
+            ["따뜻했다", "괜찮았다", "형식적이었다", "힘들었다"]
+        )
+    
+    notes = st.text_input("어떤 접촉이었나요? (선택)", placeholder="예: 친구와 카페")
+    
+    if st.button("✅ 접촉 기록하기", use_container_width=True, type="primary"):
+        record_social_contact(contact_type, quality, notes)
+        st.success("🎉 잘했어요! 사회적 연결은 회복의 핵심이에요!")
+        if quality == "따뜻했다":
+            st.balloons()
+        time.sleep(2)
+        st.rerun()
+
+def record_social_contact(contact_type, quality, notes=""):
+    """사회적 접촉 기록"""
+    interaction = {
+        'timestamp': datetime.now().isoformat(),
+        'date': datetime.now().date().isoformat(),
+        'type': contact_type,
+        'quality': quality,
+        'notes': notes
+    }
+    
+    st.session_state.social_interactions.append(interaction)
+    st.session_state.last_social_contact = datetime.now()
+    
+    # 최근 90일치만 유지
+    if len(st.session_state.social_interactions) > 90:
+        st.session_state.social_interactions = st.session_state.social_interactions[-90:]
+    
+    # 고립 점수 재계산
+    update_isolation_score()
+
+# ============================================================================
+# 3-3. Module 3: Reality Social Field Engine (현실 세계 연결 엔진)
+# ============================================================================
+
+def get_reality_social_suggestions():
+    """현실 세계 사회적 접촉 제안"""
+    suggestions = {
+        '즉시 가능': [
+            "🚶 근처 편의점에 간식 사러 가기",
+            "☕ 카페에서 따뜻한 음료 한 잔",
+            "🏃 공원 산책 (사람들 보이는 곳)",
+            "📚 도서관 방문 (조용하지만 사람 온기 있어)",
+            "🛒 마트 구경 (사람 많은 곳)"
+        ],
+        '약간의 준비': [
+            "⛪ 근처 교회/성당/절 방문",
+            "🏋️ 헬스장/수영장 등록 상담",
+            "🎨 문화센터 프로그램 알아보기",
+            "📖 동네 서점 구경",
+            "🌳 등산로 입구까지만 가보기"
+        ],
+        '계획 필요': [
+            "🤝 정신건강복지센터 방문",
+            "👥 자조 모임 찾아보기",
+            "🎯 취미 모임 참여",
+            "🙏 종교 시설 정기 모임",
+            "💪 운동 동호회 가입"
+        ]
+    }
+    
+    return suggestions
+
+def get_community_resources():
+    """지역사회 자원 정보"""
+    return {
+        '정신건강': [
+            "📞 정신건강복지센터: 1577-0199",
+            "📞 자살예방 상담전화: 1393",
+            "📞 생명의 전화: 1588-9191",
+            "📞 청소년 상담: 1388",
+            "🏥 지역 정신건강복지센터 방문"
+        ],
+        '종교시설': [
+            "⛪ 근처 교회 (새벽/저녁 예배)",
+            "⛪ 성당 (미사)",
+            "🕌 근처 절 (법회)",
+            "📿 종교 소모임/성경공부",
+            "🙏 영적 돌봄 상담"
+        ],
+        '사회활동': [
+            "🏃 지역 운동 동호회",
+            "📚 독서 모임",
+            "🎨 문화센터 프로그램",
+            "♻️ 자원봉사 활동",
+            "🎭 지역 문화행사"
+        ],
+        '온라인커뮤니티': [
+            "💬 우울증 회복 커뮤니티",
+            "💪 운동 챌린지 그룹",
+            "📖 독서 모임 SNS",
+            "🎮 건전한 게임 커뮤니티",
+            "🌱 자기계발 그룹"
+        ]
+    }
+
+# ============================================================================
+# 3-4. Module 4: Digital Social Engine (디지털 연결 엔진)
+# ============================================================================
+
+def get_digital_connection_tips():
+    """디지털 사회적 연결 팁"""
+    return {
+        '초보자용 (쉬움)': [
+            "👍 좋아하는 콘텐츠에 좋아요 누르기",
+            "💬 공감되는 글에 '맞아요' 댓글",
+            "🔄 유익한 정보 공유하기",
+            "😊 이모지로 반응하기",
+            "📸 일상 사진 1장 올리기"
+        ],
+        '중급자용 (보통)': [
+            "✍️ 짧은 생각 글 쓰기",
+            "💭 다른 사람 고민에 공감 댓글",
+            "📹 짧은 영상 올리기 (릴스/쇼츠)",
+            "🎯 관심사 해시태그 팔로우",
+            "👥 건강한 오픈채팅 참여"
+        ],
+        '적극적 (활발)': [
+            "🎤 스토리/피드 정기 업로드",
+            "💬 의미있는 대화 나누기",
+            "🤝 온라인 스터디/모임 참여",
+            "📝 블로그/vlog 시작",
+            "👋 새로운 사람들과 소통"
+        ]
+    }
+
+def get_sns_safety_guide():
+    """SNS 안전 가이드"""
+    return {
+        '⚠️ 피해야 할 것': [
+            "❌ 자신을 남과 비교하는 콘텐츠",
+            "❌ 부정적/우울한 콘텐츠만 보기",
+            "❌ 악플/논쟁에 휘말리기",
+            "❌ 과도한 시간 소비 (하루 2시간 초과)",
+            "❌ 밤늦게까지 SNS 하기"
+        ],
+        '✅ 권장하는 것': [
+            "✅ 긍정적/동기부여 콘텐츠",
+            "✅ 취미/관심사 관련 커뮤니티",
+            "✅ 건강/운동/자기계발 채널",
+            "✅ 공감과 응원이 있는 커뮤니티",
+            "✅ 시간 제한 설정 (앱 타이머)"
+        ]
+    }
+
+# ============================================================================
+# 3-5. Module 5: Social Risk Management Engine (사회 위험 관리 엔진)
+# ============================================================================
+
+def detect_toxic_social_pattern(text):
+    """유해한 사회적 패턴 감지"""
+    toxic_patterns = {
+        '비교중독': ['부럽', '나만 못', '다들', '남들은', '혼자만'],
+        '악플노출': ['악플', '비난', '욕', '싫어', '공격'],
+        '고립심화': ['삭제', '차단', '끊', '멀리', '안 보고 싶'],
+        'sns중독': ['계속', '멈출 수 없', '하루종일', '새벽까지']
+    }
+    
+    detected = []
+    text_lower = text.lower()
+    
+    for pattern_type, keywords in toxic_patterns.items():
+        for keyword in keywords:
+            if keyword in text_lower:
+                detected.append(pattern_type)
+                break
+    
+    return list(set(detected))
+
+def get_social_risk_intervention(toxic_patterns):
+    """유해 패턴별 개입"""
+    interventions = {
+        '비교중독': """
+⚠️ **비교 중독 감지**
+
+SNS에서 남과 비교하고 있나요?
+
+**진실:**
+- SNS는 "하이라이트 릴"입니다
+- 모든 사람이 어려움을 겪어요
+- 당신의 가치는 남과 무관해요
+
+**대안:**
+✅ 비교 유발 계정 언팔/뮤트
+✅ 자기계발/동기부여 채널로 전환
+✅ SNS 사용 시간 줄이기
+""",
+        '악플노출': """
+⚠️ **악플/비난 노출 감지**
+
+악플이나 부정적 반응에 노출되었나요?
+
+**즉시 대응:**
+- 🚫 악플 차단/신고
+- 💬 댓글 끄기
+- 🛡️ 방어 모드 활성화
+
+**기억하세요:**
+악플은 상대의 문제이지, 당신의 문제가 아닙니다.
+""",
+        '고립심화': """
+🚨 **고립 심화 패턴 감지**
+
+SNS 끊기/차단을 생각하고 있나요?
+
+**경고:**
+완전한 차단은 고립을 악화시킬 수 있어요.
+
+**대신 이렇게:**
+- 유해한 계정만 선택적 차단
+- 긍정적 커뮤니티로 전환
+- 온라인-오프라인 균형 잡기
+""",
+        'sns중독': """
+⚠️ **SNS 과사용 감지**
+
+SNS에 너무 많은 시간을 쓰고 있나요?
+
+**건강한 사용:**
+- ⏰ 하루 1-2시간 제한
+- 🚫 취침 1시간 전 차단
+- 📱 앱 타이머 설정
+- 🌳 대신 산책/운동
+
+**과사용은 우울증을 악화시킵니다.**
+"""
+    }
+    
+    messages = []
+    for pattern in toxic_patterns:
+        if pattern in interventions:
+            messages.append(interventions[pattern])
+    
+    return messages
+
+# ============================================================================
+# 3-6. Social Connection Dashboard (사회적 연결 대시보드)
+# ============================================================================
+
+def show_social_connection_dashboard():
+    """사회적 연결 대시보드"""
+    st.subheader("🤝 사회적 연결 대시보드")
+    
+    # 고립 점수 업데이트
+    update_isolation_score()
+    
+    score = st.session_state.isolation_score
+    isolation_level = get_isolation_level()
+    
+    # 마지막 접촉
+    days_since = 999
+    if st.session_state.last_social_contact:
+        last_contact = st.session_state.last_social_contact
+        if isinstance(last_contact, str):
+            last_contact = datetime.fromisoformat(last_contact)
+        days_since = (datetime.now() - last_contact).days
+    
+    # 최근 7일 접촉 횟수
+    week_ago = (datetime.now() - timedelta(days=7)).date().isoformat()
+    recent_contacts = [c for c in st.session_state.social_interactions if c['date'] >= week_ago]
+    
+    # 메트릭
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if days_since == 0:
+            st.metric("마지막 접촉", "오늘 ✅")
+        elif days_since < 3:
+            st.metric("마지막 접촉", f"{days_since}일 전 ⚠️")
+        elif days_since < 999:
+            st.metric("마지막 접촉", f"{days_since}일 전 🚨")
+        else:
+            st.metric("마지막 접촉", "기록 없음")
+    
+    with col2:
+        st.metric("7일 접촉", f"{len(recent_contacts)}회")
+    
+    with col3:
+        color_emoji = {
+            'green': '✅',
+            'yellow': '⚠️',
+            'orange': '🚨',
+            'red': '❌'
+        }
+        st.metric("고립 점수", f"{score}/100 {color_emoji[isolation_level['color']]}")
+    
+    with col4:
+        st.metric("상태", isolation_level['label'])
+    
+    st.markdown("---")
+    
+    # 고립 수준별 경고
+    if isolation_level['level'] >= 2:
+        st.error(f"""
+        ⚠️ **{isolation_level['label']} 상태**
+        
+        고립 점수: {score}/100
+        마지막 접촉: {days_since}일 전
+        
+        **즉시 사회적 연결이 필요합니다!**
+        """)
+    elif isolation_level['level'] == 1:
+        st.warning(f"""
+        💛 사회적 연결을 권장합니다
+        
+        고립 점수: {score}/100
+        최근 {days_since}일간 접촉이 적어요.
+        """)
+    else:
+        st.success("✅ 사회적 연결 양호!")
+    
+    st.markdown("---")
+    
+    # Module 3: 현실 세계 연결 제안
+    st.subheader("🌍 현실 세계 연결 제안")
+    
+    suggestions = get_reality_social_suggestions()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("### 즉시 가능")
+        for suggestion in suggestions['즉시 가능']:
+            st.markdown(f"- {suggestion}")
+    
+    with col2:
+        st.markdown("### 약간의 준비")
+        for suggestion in suggestions['약간의 준비']:
+            st.markdown(f"- {suggestion}")
+    
+    with col3:
+        st.markdown("### 계획 필요")
+        for suggestion in suggestions['계획 필요']:
+            st.markdown(f"- {suggestion}")
+    
+    st.markdown("---")
+    
+    # 지역사회 자원
+    st.subheader("📍 지역사회 자원")
+    
+    resources = get_community_resources()
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["정신건강", "종교시설", "사회활동", "온라인커뮤니티"])
+    
+    with tab1:
+        for resource in resources['정신건강']:
+            st.markdown(f"- {resource}")
+    
+    with tab2:
+        for resource in resources['종교시설']:
+            st.markdown(f"- {resource}")
+    
+    with tab3:
+        for resource in resources['사회활동']:
+            st.markdown(f"- {resource}")
+    
+    with tab4:
+        for resource in resources['온라인커뮤니티']:
+            st.markdown(f"- {resource}")
+    
+    st.markdown("---")
+    
+    # Module 4: 디지털 연결 팁
+    st.subheader("📱 디지털 연결 가이드")
+    
+    digital_tips = get_digital_connection_tips()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("### 초보자용")
+        for tip in digital_tips['초보자용 (쉬움)']:
+            st.markdown(f"- {tip}")
+    
+    with col2:
+        st.markdown("### 중급자용")
+        for tip in digital_tips['중급자용 (보통)']:
+            st.markdown(f"- {tip}")
+    
+    with col3:
+        st.markdown("### 적극적")
+        for tip in digital_tips['적극적 (활발)']:
+            st.markdown(f"- {tip}")
+    
+    st.markdown("---")
+    
+    # Module 5: SNS 안전 가이드
+    st.subheader("🛡️ SNS 안전 가이드")
+    
+    safety = get_sns_safety_guide()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### ⚠️ 피해야 할 것")
+        for item in safety['⚠️ 피해야 할 것']:
+            st.markdown(f"{item}")
+    
+    with col2:
+        st.markdown("### ✅ 권장하는 것")
+        for item in safety['✅ 권장하는 것']:
+            st.markdown(f"{item}")
+    
+    st.markdown("---")
+    
+    # 깐부의 메시지
+    st.info("""
+    💙 **깐부가 말했던 진실:**
+    
+    "사람의 관심이 필요하다.
+    그곳으로 가라."
+    
+    고립은 우울증의 가장 큰 적입니다.
+    작은 연결부터 시작하세요.
+    """)
+    
+    st.markdown("---")
+    
+    # 최근 접촉 기록
+    if len(st.session_state.social_interactions) > 0:
+        st.subheader("📋 최근 사회적 접촉 기록")
+        
+        recent_10 = st.session_state.social_interactions[-10:]
+        
+        for record in reversed(recent_10):
+            timestamp = datetime.fromisoformat(record['timestamp']).strftime("%m/%d %H:%M")
+            contact_type = record['type']
+            quality = record['quality']
+            notes = record.get('notes', '')
+            
+            quality_emoji = "💙" if quality == "따뜻했다" else "😊" if quality == "괜찮았다" else "😐" if quality == "형식적이었다" else "😔"
+            
+            with st.expander(f"{quality_emoji} {timestamp} - {contact_type} ({quality})"):
+                if notes:
+                    st.write(f"**내용:** {notes}")
+                st.write(f"**시각:** {timestamp}")
+                st.write(f"**느낌:** {quality}")
+    
+    st.markdown("---")
+    
+    # 접촉 기록 추가
+    st.subheader("➕ 사회적 접촉 기록 추가")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        contact_type = st.selectbox(
+            "접촉 유형",
+            ["대면 만남", "전화/영상", "SNS 댓글", "단톡방", "문자", "기타"],
+            key="main_contact_type"
+        )
+    
+    with col2:
+        quality = st.selectbox(
+            "느낌",
+            ["따뜻했다", "괜찮았다", "형식적이었다", "힘들었다"],
+            key="main_quality"
+        )
+    
+    with col3:
+        notes = st.text_input("내용 (선택)", placeholder="예: 친구와 카페", key="main_notes")
+    
+    if st.button("✅ 접촉 기록 추가", use_container_width=True, type="primary"):
+        record_social_contact(contact_type, quality, notes)
+        st.success("🎉 기록 완료! 사회적 연결은 회복의 핵심이에요!")
+        if quality == "따뜻했다":
+            st.balloons()
+        time.sleep(1)
+        st.rerun()
+
+# ============================================================================
 # 2-4. V2.0 - 경계 시간 관리 및 AI 개입 (유지)
 # ============================================================================
 
@@ -1217,8 +2009,8 @@ def show_crisis_dashboard():
 def show_disclaimer():
     """면책 조항"""
     st.title("🌙 GINI R.E.S.T.")
-    st.subheader("Human Recovery AI System v2.5")
-    st.caption("✅ Phase 1 COMPLETE: Crisis + Exercise + Nutrition")
+    st.subheader("Human Recovery AI System v3.0")
+    st.caption("✅ Phase 1 COMPLETE: Crisis + Exercise + Nutrition + Social Connection")
     
     st.markdown("---")
     
@@ -1227,19 +2019,21 @@ def show_disclaimer():
     
     #### 1. 서비스의 성격
     - 본 서비스는 **정신건강 회복 지원 도구**입니다.
-    - 수면, 운동, 영양 패턴을 관리합니다.
+    - 수면, 운동, 영양, 사회적 연결 패턴을 관리합니다.
     - **의학적 진단, 치료, 상담을 제공하지 않습니다.**
     
-    #### 2. AI 개입 기능 (V2.5 Phase 1 Complete)
+    #### 2. AI 개입 기능 (V3.0 Phase 1 Complete)
     - ✅ 다단계 위기 감지 시스템
     - ✅ 강력한 운동 개입 시스템
     - ✅ 강력한 영양 개입 시스템
+    - ✅ **사회적 연결 엔진 (5개 모듈)**
     - ✅ GPS 위치 자동 표시 (긴급 상황용)
     - 직설적이고 강한 메시지 포함 (회복을 위한 설계)
     
     #### 3. 사용자의 책임
     - 심각한 정신건강 문제가 있다면 **반드시 전문가와 상담**하세요.
     - 24시간 이상 식사를 하지 않았다면 의학적 개입이 필요합니다.
+    - 7일 이상 고립 상태라면 사회적 지원이 필요합니다.
     - 응급 상황 시 즉시 119 또는 1393으로 연락하세요.
     
     #### 4. 데이터
@@ -1248,6 +2042,10 @@ def show_disclaimer():
     
     #### 5. 면책사항
     - 본 서비스 사용으로 인한 결과에 대해 개발자는 책임지지 않습니다.
+    
+    #### 6. 사회적 연결 엔진 (SCE)
+    - 고립 감지, 사회 연결 개입, 현실/디지털 연결 제안
+    - "사람의 관심이 필요하다. 그곳으로 가라." (깐부의 철학)
     """)
     
     st.markdown("---")
@@ -1561,6 +2359,12 @@ def main():
         show_nutrition_intervention()
         return
     
+    # 5순위: Social Intervention Check (Level 2+)
+    social_intervention = check_social_intervention()
+    if social_intervention and social_intervention['level'] >= 2:
+        show_social_intervention()
+        return
+    
     # 경계 구역 체크
     in_boundary = check_boundary_zone()
     if in_boundary and not st.session_state.recovery_confirmed:
@@ -1574,8 +2378,8 @@ def main():
     # 사이드바
     with st.sidebar:
         st.title("🌙 GINI R.E.S.T.")
-        st.caption("v2.5 Phase 1 Complete ✅")
-        st.caption("Crisis + Exercise + Nutrition")
+        st.caption("v3.0 Phase 1 Complete ✅")
+        st.caption("Crisis + Exercise + Nutrition + Social")
         
         st.markdown("---")
         
@@ -1583,6 +2387,10 @@ def main():
         pattern = get_crisis_pattern()
         days_no_exercise = days_since_last_exercise()
         hours_no_meal = hours_since_last_meal()
+        
+        # 고립 점수 업데이트
+        update_isolation_score()
+        isolation_level = get_isolation_level()
         
         # 위기 상태
         if pattern['trend'] == 'worsening':
@@ -1600,13 +2408,30 @@ def main():
         else:
             st.error(f"🚨 운동: {days_no_exercise}일 미실시")
         
-        # 영양 상태 (NEW)
+        # 영양 상태
         if hours_no_meal < 6:
             st.success("🍽️ 식사: 양호 ✅")
         elif hours_no_meal < 12:
             st.warning(f"⚠️ 식사: {hours_no_meal:.0f}시간 전")
         else:
             st.error(f"🚨 식사: {hours_no_meal:.0f}시간 전")
+        
+        # 사회적 연결 상태 (NEW)
+        days_since_social = 999
+        if st.session_state.last_social_contact:
+            last_contact = st.session_state.last_social_contact
+            if isinstance(last_contact, str):
+                last_contact = datetime.fromisoformat(last_contact)
+            days_since_social = (datetime.now() - last_contact).days
+        
+        if days_since_social == 0:
+            st.success("🤝 사회적 연결: 오늘 ✅")
+        elif days_since_social < 3:
+            st.warning(f"⚠️ 사회적 연결: {days_since_social}일 전")
+        elif days_since_social < 999:
+            st.error(f"🚨 고립: {days_since_social}일째")
+        else:
+            st.info("🤝 사회적 연결: 기록 없음")
         
         # 수면 상태
         if st.session_state.target_bedtime:
@@ -1617,10 +2442,11 @@ def main():
         menu = st.radio(
             "메뉴",
             [
-                "🎯 V2.5 설정",
+                "🎯 V3.0 설정",
                 "📊 위기 대시보드",
                 "🏃 운동 대시보드",
-                "🍽️ 영양 대시보드",  # NEW
+                "🍽️ 영양 대시보드",
+                "🤝 사회적 연결",  # NEW
                 "💬 AI 상담",
                 "📊 수면 기록",
                 "💤 수면 분석",
@@ -1634,7 +2460,9 @@ def main():
         st.caption(f"위기: {pattern['total_count']}회")
         st.caption(f"운동: {len(st.session_state.exercise_records)}일")
         st.caption(f"연속: {st.session_state.exercise_streak}일 🔥")
-        st.caption(f"식사: {len(st.session_state.meal_records)}회")  # NEW
+        st.caption(f"식사: {len(st.session_state.meal_records)}회")
+        st.caption(f"사회: {len(st.session_state.social_interactions)}회")  # NEW
+        st.caption(f"고립: {st.session_state.isolation_score}/100")  # NEW
         
         if st.button("⚠️ 긴급 도움"):
             st.session_state.emergency_mode = True
@@ -1649,20 +2477,25 @@ def main():
         st.warning(exercise_intervention['message'])
         warnings_shown += 1
     
-    # 영양 Level 1 경고 (NEW)
+    # 영양 Level 1 경고
     if nutrition_intervention and nutrition_intervention['level'] == 1:
         st.warning(nutrition_intervention['message'])
         warnings_shown += 1
     
+    # 사회적 연결 Level 1 경고 (NEW)
+    if social_intervention and social_intervention['level'] == 1:
+        st.warning(social_intervention['message'])
+        warnings_shown += 1
+    
     # 메뉴별 화면
-    if menu == "🎯 V2.5 설정":
-        st.title("🎯 V2.5 Phase 1 설정")
+    if menu == "🎯 V3.0 설정":
+        st.title("🎯 V3.0 설정")
         set_target_bedtime()
         
         st.markdown("---")
         st.subheader("📊 전체 현황")
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
             st.metric("수면 기록", f"{len(st.session_state.sleep_data)}일")
@@ -1675,6 +2508,9 @@ def main():
         
         with col4:
             st.metric("식사 기록", f"{len(st.session_state.meal_records)}회")
+        
+        with col5:
+            st.metric("사회 접촉", f"{len(st.session_state.social_interactions)}회")
     
     elif menu == "📊 위기 대시보드":
         st.title("📊 위기 대시보드")
@@ -1687,6 +2523,10 @@ def main():
     elif menu == "🍽️ 영양 대시보드":
         st.title("🍽️ 영양 대시보드")
         show_nutrition_dashboard()
+    
+    elif menu == "🤝 사회적 연결":
+        st.title("🤝 사회적 연결")
+        show_social_connection_dashboard()
     
     elif menu == "💬 AI 상담":
         show_education()
