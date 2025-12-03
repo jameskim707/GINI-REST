@@ -4,13 +4,13 @@ import time
 import json
 
 # ============================================================================
-# GINI R.E.S.T. v2.5 - Human Recovery AI System
-# Phase 1 COMPLETE: Crisis Engine + Exercise Intervention
+# GINI R.E.S.T. v3.0 Phase 2 - Human Recovery AI System
+# Phase 2 COMPLETE: Emotion Pattern Engine
 # ============================================================================
 
 # 페이지 설정
 st.set_page_config(
-    page_title="GINI R.E.S.T. v2.5 Phase 1",
+    page_title="GINI R.E.S.T. v3.0 Phase 2",
     page_icon="🌙",
     layout="wide"
 )
@@ -100,6 +100,16 @@ def init_session_state():
     
     if 'social_warnings' not in st.session_state:
         st.session_state.social_warnings = 0
+    
+    # ========== Phase 2 Emotion Pattern Engine ==========
+    if 'emotion_score' not in st.session_state:
+        st.session_state.emotion_score = 1  # E1-E5
+    
+    if 'emotion_history' not in st.session_state:
+        st.session_state.emotion_history = []
+    
+    if 'last_emotion_check' not in st.session_state:
+        st.session_state.last_emotion_check = None
 
 # ============================================================================
 # 2. ESP v2.5 - Enhanced Crisis Detection Engine
@@ -299,6 +309,404 @@ def check_crisis_keywords(text):
         return (True, level, response)
     
     return (False, 0, "")
+
+# ============================================================================
+# Phase 2 - Emotion Pattern Engine (Raira Design)
+# ============================================================================
+
+# 감정 키워드 사전
+EMOTION_KEYWORDS = {
+    '불안': ['불안', '걱정', '초조', 'nervous', 'anxious', 'worried', '떨려', '무서워'],
+    '우울': ['우울', '슬프', '허무', '공허', 'sad', 'empty', 'depressed', '힘들', '지쳐'],
+    '분노': ['화나', '짜증', '열받', 'angry', 'pissed', 'upset', '미치겠', '빡쳐'],
+    '고립': ['혼자', '외로', '아무도', '단절', 'alone', 'lonely', 'nobody', 'isolated', '고립'],
+    '자책': ['내 탓', '내가 못나', '자책', 'my fault', 'blame myself', '미안', '죄송'],
+    '무기력': ['못하겠', '지쳤', '힘없', 'exhausted', 'powerless', "can't do", '포기', '의미없'],
+    '희망': ['괜찮', '나아질', '희망', 'hopeful', 'better', '좋아질', '할 수 있'],
+    '회복': ['좋아졌', '나아졌', 'feeling better', 'recovered', '덜 힘들', '개선']
+}
+
+# 문맥 분석용 수식어
+CONTEXT_MODIFIERS = {
+    '강화': ['너무', '정말', '엄청', '완전', '진짜', 'very', 'so', 'really'],
+    '약화': ['조금', '약간', '살짝', 'a bit', 'slightly', 'little'],
+    '부정': ['안', '못', '아니', 'not', "don't", "can't"],
+    '의문': ['?', '일까', '건가', '까요']
+}
+
+def detect_emotions(text):
+    """텍스트에서 감정 감지"""
+    text_lower = text.lower()
+    detected = {emotion: [] for emotion in EMOTION_KEYWORDS.keys()}
+    
+    for emotion, keywords in EMOTION_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in text_lower:
+                detected[emotion].append(keyword)
+    
+    return detected
+
+def analyze_context(text):
+    """문맥 분석 - 강도 수식어 감지"""
+    text_lower = text.lower()
+    modifiers = {
+        'intensifier': False,  # 강화
+        'weakener': False,     # 약화
+        'negation': False,     # 부정
+        'question': False      # 의문
+    }
+    
+    for word in CONTEXT_MODIFIERS['강화']:
+        if word in text_lower:
+            modifiers['intensifier'] = True
+            break
+    
+    for word in CONTEXT_MODIFIERS['약화']:
+        if word in text_lower:
+            modifiers['weakener'] = True
+            break
+    
+    for word in CONTEXT_MODIFIERS['부정']:
+        if word in text_lower:
+            modifiers['negation'] = True
+            break
+    
+    if '?' in text or any(word in text_lower for word in CONTEXT_MODIFIERS['의문']):
+        modifiers['question'] = True
+    
+    return modifiers
+
+def calculate_emotion_score(detected_emotions, context):
+    """E1-E5 감정 점수 계산"""
+    
+    # 부정 감정 가중치
+    negative_weights = {
+        '불안': 2,
+        '우울': 3,
+        '분노': 2,
+        '고립': 3,
+        '자책': 2.5,
+        '무기력': 3
+    }
+    
+    # 긍정 감정 가중치 (음수로)
+    positive_weights = {
+        '희망': -2,
+        '회복': -3
+    }
+    
+    score = 0
+    
+    # 부정 감정 점수 합산
+    for emotion in ['불안', '우울', '분노', '고립', '자책', '무기력']:
+        if detected_emotions[emotion]:
+            weight = negative_weights[emotion]
+            count = len(detected_emotions[emotion])
+            score += weight * min(count, 2)  # 최대 2개까지만 카운트
+    
+    # 긍정 감정 점수 차감
+    for emotion in ['희망', '회복']:
+        if detected_emotions[emotion]:
+            weight = positive_weights[emotion]
+            score += weight
+    
+    # 문맥 수식
+    if context['intensifier']:
+        score *= 1.3
+    if context['weakener']:
+        score *= 0.7
+    if context['question']:
+        score *= 0.8
+    
+    # E1-E5로 변환
+    if score <= 0:
+        return 1  # E1: 안정
+    elif score <= 3:
+        return 2  # E2: 주의
+    elif score <= 6:
+        return 3  # E3: 위험
+    elif score <= 9:
+        return 4  # E4: 심각
+    else:
+        return 5  # E5: 위기
+
+def detect_emotion_level(text):
+    """감정 레벨 전체 분석"""
+    detected = detect_emotions(text)
+    context = analyze_context(text)
+    e_score = calculate_emotion_score(detected, context)
+    
+    return {
+        'score': e_score,
+        'emotions': detected,
+        'context': context
+    }
+
+def record_emotion_event(e_score, detected_emotions, text_sample):
+    """감정 이벤트 기록"""
+    emotion_event = {
+        'timestamp': datetime.now().isoformat(),
+        'e_score': e_score,
+        'detected_emotions': {k: v for k, v in detected_emotions.items() if v},
+        'text_sample': text_sample[:100]
+    }
+    
+    st.session_state.emotion_history.append(emotion_event)
+    st.session_state.emotion_score = e_score
+    st.session_state.last_emotion_check = datetime.now()
+    
+    # 최근 50개만 유지
+    if len(st.session_state.emotion_history) > 50:
+        st.session_state.emotion_history = st.session_state.emotion_history[-50:]
+
+def get_emotion_response(e_score, isolation_score, crisis_pattern):
+    """E-Score 기반 반응 메시지 생성"""
+    
+    # Phase 1 연동 체크
+    high_isolation = isolation_score >= 70
+    has_crisis = crisis_pattern['recent_7days'] > 0
+    days_no_exercise = days_since_last_exercise()
+    hours_no_meal = hours_since_last_meal()
+    
+    if e_score == 1:
+        # E1: 안정 - soft tone
+        return """
+💙 **감정 상태: 안정**
+
+현재 감정 상태가 양호하네요.
+이 상태를 유지하는 게 중요해요.
+
+✨ 계속 좋은 루틴 유지하세요!
+"""
+    
+    elif e_score == 2:
+        # E2: 주의 - warm tone
+        message = """
+💛 **감정 체크**
+
+지금 조금 힘든 감정이 있나 봐요.
+괜찮아요, 모두가 그런 순간이 있어요.
+
+**작은 행동 제안:**
+- 🫁 깊은 호흡 5회
+- 🚶 5분 걷기
+- ☕ 따뜻한 차 한 잔
+"""
+        
+        if days_no_exercise >= 2:
+            message += "\n💪 **운동하면 기분이 나아져요.**"
+        
+        if hours_no_meal >= 8:
+            message += "\n🍽️ **가볍게라도 뭔가 먹어보세요.**"
+        
+        return message
+    
+    elif e_score == 3:
+        # E3: 위험 - 탄탄한 지지
+        message = f"""
+🧡 **감정 주의 필요**
+
+지금 꽤 힘든 감정을 느끼고 있네요.
+이런 감정은 일시적이에요. 나아질 거예요.
+
+**지금 할 수 있는 것:**
+1. 🫁 호흡 운동 (4-7-8 호흡)
+2. 💪 10분 걷기 or 스트레칭
+3. 💬 신뢰할 사람에게 연락
+"""
+        
+        if high_isolation:
+            message += """
+
+⚠️ **고립 + 부정 감정 = 위험**
+지금 사회적 연결이 필요해요.
+"""
+        
+        if has_crisis:
+            message += f"""
+
+📊 **최근 7일 위기 신호: {crisis_pattern['recent_7days']}회**
+패턴이 보이네요. 전문가 상담 고려하세요.
+"""
+        
+        return message
+    
+    elif e_score == 4:
+        # E4: 심각 - 강력 공감
+        message = f"""
+❤️ **강력한 지지가 필요한 상태**
+
+지금 정말 힘들어 보여요.
+당신의 고통을 이해해요.
+
+**즉시 안정화:**
+- 🫁 지금 바로 깊게 호흡하세요
+- 💧 물 한 잔 마시세요
+- 🛋️ 안전한 곳에 앉으세요
+
+**도움 받기:**
+📞 정신건강 상담: 1577-0199
+📞 생명의 전화: 1588-9191
+"""
+        
+        if high_isolation:
+            message += f"""
+
+🚨 **고립 점수: {isolation_score}/100**
+혼자 있으면 더 힘들어져요.
+지금 누군가에게 연락하세요.
+"""
+        
+        if days_no_exercise >= 3:
+            message += f"""
+
+💪 **{days_no_exercise}일째 운동 안 함**
+운동이 감정을 바꿀 수 있어요.
+"""
+        
+        if hours_no_meal >= 12:
+            message += f"""
+
+🍽️ **{hours_no_meal:.0f}시간째 안 먹음**
+뇌가 에너지가 필요해요. 지금 먹어요.
+"""
+        
+        return message
+    
+    else:  # e_score == 5
+        # E5: 위기 - 즉시 Crisis Engine 발동
+        return None  # Crisis Engine이 처리
+
+def check_emotion_intervention():
+    """감정 개입 필요 여부 체크"""
+    e_score = st.session_state.emotion_score
+    
+    if e_score <= 1:
+        return None
+    
+    isolation_score = st.session_state.isolation_score
+    crisis_pattern = get_crisis_pattern()
+    
+    return {
+        'score': e_score,
+        'message': get_emotion_response(e_score, isolation_score, crisis_pattern)
+    }
+
+def show_emotion_dashboard():
+    """감정 패턴 대시보드"""
+    st.subheader("💭 감정 패턴 분석 (Phase 2)")
+    
+    e_score = st.session_state.emotion_score
+    
+    # 감정 레벨 표시
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        level_emoji = {1: '✅', 2: '💛', 3: '🧡', 4: '❤️', 5: '🚨'}
+        level_text = {1: 'E1-안정', 2: 'E2-주의', 3: 'E3-위험', 4: 'E4-심각', 5: 'E5-위기'}
+        st.metric("현재 감정 레벨", f"{level_emoji[e_score]} {level_text[e_score]}")
+    
+    with col2:
+        recent_7 = [e for e in st.session_state.emotion_history 
+                    if datetime.fromisoformat(e['timestamp']) > datetime.now() - timedelta(days=7)]
+        avg_score = sum([e['e_score'] for e in recent_7]) / len(recent_7) if recent_7 else 1
+        st.metric("7일 평균", f"E{avg_score:.1f}")
+    
+    with col3:
+        st.metric("기록 수", f"{len(st.session_state.emotion_history)}회")
+    
+    st.markdown("---")
+    
+    # Phase 1 통합 분석
+    st.subheader("🔗 통합 분석 (Phase 1 + Phase 2)")
+    
+    isolation = st.session_state.isolation_score
+    crisis = get_crisis_pattern()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 현재 상태")
+        st.write(f"**감정:** E{e_score}")
+        st.write(f"**고립:** {isolation}/100")
+        st.write(f"**위기:** {crisis['recent_7days']}회/7일")
+        st.write(f"**운동:** {days_since_last_exercise()}일 전")
+        st.write(f"**식사:** {hours_since_last_meal():.0f}시간 전")
+    
+    with col2:
+        st.markdown("### 종합 평가")
+        
+        if e_score >= 4 or isolation >= 85:
+            st.error("🚨 **즉각 개입 필요**")
+        elif e_score >= 3 or isolation >= 70:
+            st.warning("⚠️ **주의 필요**")
+        else:
+            st.success("✅ **안정 상태**")
+        
+        # 패턴 경고
+        if e_score >= 3 and isolation >= 70:
+            st.error("**위험:** 부정 감정 + 고립")
+        
+        if e_score >= 3 and crisis['recent_7days'] >= 2:
+            st.error("**위험:** 부정 감정 + 위기 신호")
+        
+        if e_score >= 3 and days_since_last_exercise() >= 5:
+            st.warning("**경고:** 부정 감정 + 운동 부족")
+    
+    st.markdown("---")
+    
+    # 감정 테스트
+    st.subheader("💬 감정 체크")
+    
+    st.info("""
+    **지금 기분이 어때요?**
+    
+    자유롭게 표현해보세요.
+    Phase 2 엔진이 감정을 분석합니다.
+    """)
+    
+    emotion_input = st.text_area("지금 느끼는 감정을 적어보세요:", 
+                                  placeholder="예: 오늘 너무 피곤하고 우울해요...")
+    
+    if st.button("💭 감정 분석하기", use_container_width=True):
+        if emotion_input:
+            result = detect_emotion_level(emotion_input)
+            record_emotion_event(result['score'], result['emotions'], emotion_input)
+            
+            st.success(f"✅ 분석 완료! 감정 레벨: E{result['score']}")
+            
+            # 감지된 감정 표시
+            if any(result['emotions'].values()):
+                st.write("**감지된 감정:**")
+                for emotion, keywords in result['emotions'].items():
+                    if keywords:
+                        st.write(f"- {emotion}: {', '.join(keywords)}")
+            
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.warning("감정을 입력해주세요.")
+    
+    st.markdown("---")
+    
+    # 최근 감정 기록
+    if len(st.session_state.emotion_history) > 0:
+        st.subheader("📋 최근 감정 기록")
+        
+        recent_5 = st.session_state.emotion_history[-5:]
+        
+        for record in reversed(recent_5):
+            timestamp = datetime.fromisoformat(record['timestamp']).strftime("%m/%d %H:%M")
+            e_score = record['e_score']
+            emotions = record['detected_emotions']
+            
+            level_emoji = {1: '✅', 2: '💛', 3: '🧡', 4: '❤️', 5: '🚨'}
+            
+            with st.expander(f"{level_emoji[e_score]} {timestamp} - E{e_score}"):
+                if emotions:
+                    st.write("**감지된 감정:**")
+                    for emotion, keywords in emotions.items():
+                        st.write(f"- {emotion}: {', '.join(keywords)}")
 
 # ============================================================================
 # 2-2. V2.5 - Exercise Intervention System (NEW)
@@ -2009,8 +2417,8 @@ def show_crisis_dashboard():
 def show_disclaimer():
     """면책 조항"""
     st.title("🌙 GINI R.E.S.T.")
-    st.subheader("Human Recovery AI System v3.0")
-    st.caption("✅ Phase 1 COMPLETE: Crisis + Exercise + Nutrition + Social Connection")
+    st.subheader("Human Recovery AI System v3.0 Phase 2")
+    st.caption("✅ Phase 2: Emotion Pattern Engine")
     
     st.markdown("---")
     
@@ -2019,33 +2427,33 @@ def show_disclaimer():
     
     #### 1. 서비스의 성격
     - 본 서비스는 **정신건강 회복 지원 도구**입니다.
-    - 수면, 운동, 영양, 사회적 연결 패턴을 관리합니다.
+    - 수면, 운동, 영양, 사회적 연결, 감정 패턴을 관리합니다.
     - **의학적 진단, 치료, 상담을 제공하지 않습니다.**
     
-    #### 2. AI 개입 기능 (V3.0 Phase 1 Complete)
+    #### 2. Phase 2 추가 기능
+    - ✅ **Emotion Pattern Engine (감정 패턴 분석)**
+    - ✅ E1-E5 감정 레벨 자동 분석
+    - ✅ Phase 1과 통합 (위기+고립+감정)
+    - ✅ 감정 기반 맞춤 반응 메시지
+    
+    #### 3. Phase 1 기능 (유지)
     - ✅ 다단계 위기 감지 시스템
     - ✅ 강력한 운동 개입 시스템
     - ✅ 강력한 영양 개입 시스템
-    - ✅ **사회적 연결 엔진 (5개 모듈)**
+    - ✅ 사회적 연결 엔진 (5개 모듈)
     - ✅ GPS 위치 자동 표시 (긴급 상황용)
-    - 직설적이고 강한 메시지 포함 (회복을 위한 설계)
     
-    #### 3. 사용자의 책임
+    #### 4. 사용자의 책임
     - 심각한 정신건강 문제가 있다면 **반드시 전문가와 상담**하세요.
-    - 24시간 이상 식사를 하지 않았다면 의학적 개입이 필요합니다.
-    - 7일 이상 고립 상태라면 사회적 지원이 필요합니다.
+    - E4-E5 레벨이 지속되면 전문가 도움이 필요합니다.
     - 응급 상황 시 즉시 119 또는 1393으로 연락하세요.
     
-    #### 4. 데이터
+    #### 5. 데이터
     - 브라우저 세션에만 저장됩니다.
     - 서버에 저장하지 않습니다.
     
-    #### 5. 면책사항
+    #### 6. 면책사항
     - 본 서비스 사용으로 인한 결과에 대해 개발자는 책임지지 않습니다.
-    
-    #### 6. 사회적 연결 엔진 (SCE)
-    - 고립 감지, 사회 연결 개입, 현실/디지털 연결 제안
-    - "사람의 관심이 필요하다. 그곳으로 가라." (깐부의 철학)
     """)
     
     st.markdown("---")
@@ -2077,34 +2485,64 @@ def breathing_exercise():
     st.info("호흡 운동 - v2.0 유지")
 
 def show_education():
-    """AI 상담 (Enhanced)"""
+    """AI 상담 (Enhanced with Phase 2)"""
     st.title("💬 AI 상담")
-    st.caption("Enhanced Crisis Detection + Exercise Intervention")
+    st.caption("Phase 2: Emotion Pattern Engine 통합")
     
     st.markdown("---")
     
     st.subheader("💬 질문하기")
-    st.warning("⚠️ V2.5 Phase 1: 다단계 위기 감지 + 운동 개입 활성화")
+    st.info("⚡ Phase 2: 감정 패턴 자동 분석 + 위기 감지")
     
     user_input = st.text_input("수면 또는 정신건강 관련 질문:")
     
     if user_input:
+        # Phase 2: 감정 분석 먼저
+        emotion_result = detect_emotion_level(user_input)
+        e_score = emotion_result['score']
+        
+        # E5면 즉시 위기 모드
+        if e_score == 5:
+            record_emotion_event(e_score, emotion_result['emotions'], user_input)
+            st.session_state.emergency_mode = True
+            st.session_state.crisis_level = 3
+            st.rerun()
+        
+        # Crisis 키워드도 체크
         has_crisis, crisis_level, crisis_response = check_crisis_keywords(user_input)
         
         if has_crisis:
+            record_emotion_event(e_score, emotion_result['emotions'], user_input)
             st.session_state.emergency_mode = True
             st.session_state.crisis_level = crisis_level
             st.rerun()
         else:
+            # 정상 처리
+            record_emotion_event(e_score, emotion_result['emotions'], user_input)
+            
             st.chat_message("user").write(user_input)
-            st.chat_message("assistant").write("""
-            더 자세한 정보는 각 메뉴를 참고하세요:
-            - 📊 수면 기록
-            - 💤 수면 분석
-            - 🏃 운동 대시보드
-            - 🧠 CBT-I 교육
-            - 🫁 호흡 운동
-            """)
+            
+            # Phase 2 감정 분석 결과 표시
+            if e_score >= 2:
+                st.info(f"💭 감정 분석: E{e_score} 레벨 감지")
+                
+                isolation = st.session_state.isolation_score
+                crisis = get_crisis_pattern()
+                
+                response = get_emotion_response(e_score, isolation, crisis)
+                
+                st.chat_message("assistant").write(response)
+            else:
+                st.chat_message("assistant").write("""
+                더 자세한 정보는 각 메뉴를 참고하세요:
+                - 💭 감정 패턴 (Phase 2)
+                - 📊 수면 기록
+                - 🏃 운동 대시보드
+                - 🍽️ 영양 대시보드
+                - 🤝 사회적 연결
+                - 🧠 CBT-I 교육
+                - 🫁 호흡 운동
+                """)
 
 # ============================================================================
 # 메인 앱
@@ -2378,8 +2816,8 @@ def main():
     # 사이드바
     with st.sidebar:
         st.title("🌙 GINI R.E.S.T.")
-        st.caption("v3.0 Phase 1 Complete ✅")
-        st.caption("Crisis + Exercise + Nutrition + Social")
+        st.caption("v3.0 Phase 2 ✅")
+        st.caption("Emotion Pattern Engine")
         
         st.markdown("---")
         
@@ -2442,11 +2880,12 @@ def main():
         menu = st.radio(
             "메뉴",
             [
-                "🎯 V3.0 설정",
+                "🎯 Phase 2 설정",
                 "📊 위기 대시보드",
+                "💭 감정 패턴",  # Phase 2 NEW
                 "🏃 운동 대시보드",
                 "🍽️ 영양 대시보드",
-                "🤝 사회적 연결",  # NEW
+                "🤝 사회적 연결",
                 "💬 AI 상담",
                 "📊 수면 기록",
                 "💤 수면 분석",
@@ -2488,14 +2927,15 @@ def main():
         warnings_shown += 1
     
     # 메뉴별 화면
-    if menu == "🎯 V3.0 설정":
-        st.title("🎯 V3.0 설정")
+    if menu == "🎯 Phase 2 설정":
+        st.title("🎯 Phase 2 설정")
+        st.caption("Emotion Pattern Engine 추가!")
         set_target_bedtime()
         
         st.markdown("---")
-        st.subheader("📊 전체 현황")
+        st.subheader("📊 전체 현황 (Phase 1 + Phase 2)")
         
-        col1, col2, col3, col4, col5 = st.columns(5)
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
         
         with col1:
             st.metric("수면 기록", f"{len(st.session_state.sleep_data)}일")
@@ -2504,17 +2944,25 @@ def main():
             st.metric("위기 감지", f"{pattern['total_count']}회")
         
         with col3:
-            st.metric("운동 일수", f"{len(st.session_state.exercise_records)}일")
+            e_score = st.session_state.emotion_score
+            st.metric("감정 레벨", f"E{e_score}")
         
         with col4:
-            st.metric("식사 기록", f"{len(st.session_state.meal_records)}회")
+            st.metric("운동 일수", f"{len(st.session_state.exercise_records)}일")
         
         with col5:
+            st.metric("식사 기록", f"{len(st.session_state.meal_records)}회")
+        
+        with col6:
             st.metric("사회 접촉", f"{len(st.session_state.social_interactions)}회")
     
     elif menu == "📊 위기 대시보드":
         st.title("📊 위기 대시보드")
         show_crisis_dashboard()
+    
+    elif menu == "💭 감정 패턴":
+        st.title("💭 감정 패턴 분석 (Phase 2)")
+        show_emotion_dashboard()
     
     elif menu == "🏃 운동 대시보드":
         st.title("🏃 운동 대시보드")
