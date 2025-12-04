@@ -708,6 +708,13 @@ def show_emotion_dashboard():
                     for emotion, keywords in emotions.items():
                         st.write(f"- {emotion}: {', '.join(keywords)}")
 
+
+
+
+
+
+
+
 # ============================================================================
 # 2-2. V2.5 - Exercise Intervention System (NEW)
 # ============================================================================
@@ -1715,71 +1722,188 @@ def check_social_intervention():
     
     return get_social_intervention_message()
 
-def show_social_intervention():
-    """사회적 연결 개입 화면"""
-    intervention = get_social_intervention_message()
-    
-    if intervention is None:
-        return
-    
-    level = intervention['level']
-    message = intervention['message']
-    
-    if level == 1:
-        st.warning(message)
-    elif level == 2:
-        st.error(message)
-    else:
-        st.error(message)
-    
-    st.markdown("---")
-    
-    # 사회적 접촉 기록
-    st.subheader("👥 오늘 사회적 접촉 있었나요?")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        contact_type = st.selectbox(
-            "접촉 유형",
-            ["대면 만남", "전화/영상", "SNS 댓글", "단톡방", "문자", "기타"]
-        )
-    
-    with col2:
-        quality = st.selectbox(
-            "느낌",
-            ["따뜻했다", "괜찮았다", "형식적이었다", "힘들었다"]
-        )
-    
-    notes = st.text_input("어떤 접촉이었나요? (선택)", placeholder="예: 친구와 카페")
-    
-    if st.button("✅ 접촉 기록하기", use_container_width=True, type="primary"):
-        record_social_contact(contact_type, quality, notes)
-        st.success("🎉 잘했어요! 사회적 연결은 회복의 핵심이에요!")
-        if quality == "따뜻했다":
-            st.balloons()
-        time.sleep(2)
-        st.rerun()
+# ============================================================================
+# 4. V3.0 Phase 3 - Data-Driven Forced Intervention Logic (제미나이 설계)
+# ============================================================================
 
-def record_social_contact(contact_type, quality, notes=""):
-    """사회적 접촉 기록"""
-    interaction = {
-        'timestamp': datetime.now().isoformat(),
-        'date': datetime.now().date().isoformat(),
-        'type': contact_type,
-        'quality': quality,
-        'notes': notes
+def get_sleep_prediction_data():
+    """PHASE 3: Sleep Prediction Engine의 핵심 데이터 추출 (Placeholder)"""
+    # 기존 코드의 sleep_data를 참조하여 평균 수면 시간을 계산.
+    if not st.session_state.sleep_data:
+        return {'efficiency_proxy': 100, 'avg_sleep_hours': 8}
+    
+    # 최근 7일 데이터 기반으로 효율 대리 지표 계산 (실제 구현 시 Sleep Model 필요)
+    recent_data = st.session_state.sleep_data[-7:]
+    total_sleep_hours = sum([record.get('total_sleep_hours', 0) for record in recent_data])
+    avg_sleep = total_sleep_hours / len(recent_data) if recent_data else 8
+    
+    # 7.5시간을 기준으로 효율 계산
+    efficiency_proxy = min(100, max(0, avg_sleep / 7.5 * 100)) 
+    
+    return {
+        'efficiency_proxy': efficiency_proxy,
+        'avg_sleep_hours': avg_sleep
     }
+
+def get_habit_engine_data():
+    """PHASE 3: Habit Engine의 핵심 데이터 추출 (운동/식사)"""
+    # 기존에 정의된 함수를 활용합니다. (days_since_last_exercise, hours_since_last_meal)
+    days_no_exercise = days_since_last_exercise()
+    hours_no_meal = hours_since_last_meal()
     
-    st.session_state.social_interactions.append(interaction)
-    st.session_state.last_social_contact = datetime.now()
+    return {
+        'last_exercise_days_ago': days_no_exercise,
+        'last_meal_hours_ago': hours_no_meal
+    }
+
+def determine_forced_intervention() -> tuple:
+    """
+    PHASE 3: Memory, Sleep, Habit, Emotion 데이터를 분석하여 
+    강제 개입(Directive/Crisis Tone)을 결정하고 멘트를 반환합니다.
+    """
+    # --- 데이터 수집 ---
+    sleep_data = get_sleep_prediction_data()
+    habit_data = get_habit_engine_data()
+
+    emotion_score = st.session_state.emotion_score
+    sleep_efficiency_proxy = sleep_data['efficiency_proxy']
+    consecutive_exercise_days_missed = habit_data['last_exercise_days_ago']
+    isolation_score = st.session_state.isolation_score
+    last_meal_hours_ago = habit_data['last_meal_hours_ago']
+
+    intervention_needed = False
+    intervention_tone = "Neutral"
+    intervention_message = ""
+
+    # --- 2. 강제 개입 트리거 조건 (데이터 기반 진단) ---
+
+    # 🚨 트리거 1: 수면 효율 심각 저하 (Sleep Prediction + Emotion)
+    # 수면 효율 70% 미만 & E3 (위험) 이상
+    if sleep_efficiency_proxy <= 70 and emotion_score >= 3:
+        intervention_needed = True
+        intervention_tone = "Directive"
+        intervention_message = (
+            f"GINI R.E.S.T. 진단: 당신의 **평균 수면 효율은 약 {sleep_efficiency_proxy:.1f}%**입니다. "
+            "현재 감정 상태(E{emotion_score})의 근본 원인 중 하나입니다. "
+            "Guidance Engine의 **수면 루틴**에 따라 오늘은 [Target Bedtime]에 맞춰 이완 준비를 시작해야 합니다."
+        )
+
+    # 🚨 트리거 2: 행동 패턴 누적 위험 (Habit Engine: 운동 3일 연속 부족)
+    elif consecutive_exercise_days_missed >= 3 and emotion_score >= 3:
+        intervention_needed = True
+        intervention_tone = "Directive"
+        intervention_message = (
+            f"데이터 경고: **{consecutive_exercise_days_missed}일째** 운동 목표 미달성 상태입니다. "
+            "이 상태는 우울감 극복을 방해합니다. 지금 당장 **Guidance Engine**의 '1단계 행동(10분 걷기)'을 실행해야 합니다."
+        )
+        
+    # 🚨 트리거 3: 고립 + E4 이상 (SCE + Emotion Engine)
+    elif isolation_score >= 75 and emotion_score >= 4:
+        intervention_needed = True
+        intervention_tone = "Crisis"
+        intervention_message = (
+            f"🚨 **위기 개입: 고립 점수 {isolation_score}점, 감정 E{emotion_score}** 상태입니다. "
+            "이 조합은 가장 위험합니다. **Social Connection Engine**이 활성화되었습니다. "
+            "**지금 바로** 사람의 존재가 있는 장소(카페, 공원, 편의점)로 이동하십시오. 혼자 견디지 마세요. 깐부의 지시입니다."
+        )
     
-    # 최근 90일치만 유지
-    if len(st.session_state.social_interactions) > 90:
-        st.session_state.social_interactions = st.session_state.social_interactions[-90:]
+    # 🚨 트리거 4: 18시간 이상 공복 (Nutrition)
+    elif last_meal_hours_ago >= 18:
+        intervention_needed = True
+        intervention_tone = "Crisis"
+        intervention_message = (
+            f"❌ **긴급 개입: {last_meal_hours_ago:.0f}시간째 공복.** 이것은 **자해 행위**로 간주됩니다. "
+            "뇌 기능이 심각하게 저하됩니다. **지금 당장** 우유 한 잔, 바나나 하나라도 섭취해야 합니다. 무시하지 마십시오."
+        )
+
+    return intervention_needed, intervention_tone, intervention_message
+
+
+# ============================================================================
+# 5. V3.0 Phase 3 - Total Replacement Chat Interface (통합)
+# ============================================================================
+
+# TONE_MAPPINGS는 Tone Engine (Phase 2)에 따라 정의되어 있어야 합니다.
+TONE_MAPPINGS = {
+    "Soft": "차분한",
+    "Neutral": "객관적인",
+    "Directive": "지시적인",
+    "Crisis": "강력 경고"
+}
+
+def generate_ai_response(user_input, intervention_data, current_tone="Neutral"):
+    """
+    AI 응답 생성 (이 부분은 클로드가 실제 AI 모델을 호출하는 로직으로 대체되어야 함)
+    - 강제 개입 메시지(intervention_data)와 메뉴 필터링 로직이 추가됩니다.
+    """
     
-    # 고립 점수 재계산
-    update_isolation_score()
+    # 1. [임무 2/3] 강제 개입 메시지 우선 체크
+    if intervention_data['needed']:
+        # 강제 개입 멘트를 최우선으로 출력하고 Tone을 설정
+        current_tone = intervention_data['tone']
+        ai_response = f"**[{TONE_MAPPINGS[current_tone]} 톤]**\n\n{intervention_data['message']}"
+        return ai_response, current_tone
+
+    # 2. [임무 1/3] 메뉴/설정 필터링 로직 구현
+    filter_keywords = ['메뉴', '설정', '대시보드', '메인 화면', '로그아웃']
+    if any(k in user_input for k in filter_keywords):
+        return "저는 지금 당신과의 대화에만 집중하고 싶습니다. 메뉴나 설정에 대한 질문은 다른 곳에서 찾아주십시오.", "Neutral"
+
+    # 3. Tone Engine (Phase 2) 기반의 일반 답변 (Placeholder)
+    # 실제 AI 모델은 current_tone에 따라 답변 스타일을 변경해야 합니다.
+    base_response = f"안녕하세요, **{st.session_state.emotion_score}점**입니다. 저는 지금 {TONE_MAPPINGS[current_tone]} 톤으로 당신의 말에 집중하고 있어요. 무엇이든 이야기해주세요."
+    
+    # 감정 점수 기반으로 톤을 자동으로 결정하는 로직 (Phase 2의 Tone Engine)
+    if st.session_state.emotion_score >= 4:
+        current_tone = "Directive"
+    elif st.session_state.emotion_score >= 2:
+        current_tone = "Soft"
+    else:
+        current_tone = "Neutral"
+
+    return f"**[{TONE_MAPPINGS[current_tone]} 톤]** {base_response}", current_tone
+
+
+def show_chat_interface():
+    """V3.0 Phase 3: AI 상담 엔진 전체 교체 (Total Replacement)"""
+    st.title("💬 GINI R.E.S.T. AI 상담 (Total Replacement V3.0)")
+    
+    # 0. 강제 개입 로직 실행
+    needed, tone, message = determine_forced_intervention()
+    intervention_data = {'needed': needed, 'tone': tone, 'message': message}
+    
+    # 1. 채팅 기록 표시
+    for chat_item in st.session_state.chat_history:
+        if chat_item["role"] == "user":
+            st.chat_message("user").markdown(chat_item["content"])
+        else:
+            st.chat_message("assistant").markdown(chat_item["content"])
+
+    # 2. 채팅 입력 및 응답 생성
+    if prompt := st.chat_input("GINI에게 말해주세요."):
+        
+        # 사용자 입력 기록
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        
+        # Crisis Engine (Phase 1) 체크
+        crisis_check_result = check_crisis_keywords(prompt)
+        if crisis_check_result[0]:
+            # Crisis Level 1 이상일 경우, Crisis Engine 응답 우선 출력
+            ai_response = crisis_check_result[2]
+            ai_tone = "Crisis"
+        else:
+            # Emotion Engine (Phase 2) 체크 및 기록
+            emotion_result = detect_emotion_level(prompt)
+            record_emotion_event(emotion_result['score'], emotion_result['emotions'], prompt)
+
+            # AI 응답 생성 (강제 개입 로직 통합)
+            ai_response, ai_tone = generate_ai_response(prompt.lower(), intervention_data, "Neutral")
+        
+        # AI 응답 기록
+        st.session_state.chat_history.append({"role": "assistant", "content": ai_response, "tone": ai_tone})
+        
+        # 화면 새로고침
+        st.rerun()
 
 # ============================================================================
 # 3-3. Module 3: Reality Social Field Engine (현실 세계 연결 엔진)
@@ -2877,123 +3001,58 @@ def main():
         
         st.markdown("---")
         
-        menu = st.radio(
-            "메뉴",
-            [
-                "🎯 Phase 2 설정",
-                "📊 위기 대시보드",
-                "💭 감정 패턴",  # Phase 2 NEW
-                "🏃 운동 대시보드",
-                "🍽️ 영양 대시보드",
-                "🤝 사회적 연결",
-                "💬 AI 상담",
-                "📊 수면 기록",
-                "💤 수면 분석",
-                "🧠 CBT-I 교육",
-                "🫁 호흡 운동"
-            ]
-        )
-        
-        st.markdown("---")
-        st.caption(f"수면: {len(st.session_state.sleep_data)}일")
-        st.caption(f"위기: {pattern['total_count']}회")
-        st.caption(f"운동: {len(st.session_state.exercise_records)}일")
-        st.caption(f"연속: {st.session_state.exercise_streak}일 🔥")
-        st.caption(f"식사: {len(st.session_state.meal_records)}회")
-        st.caption(f"사회: {len(st.session_state.social_interactions)}회")  # NEW
-        st.caption(f"고립: {st.session_state.isolation_score}/100")  # NEW
-        
-        if st.button("⚠️ 긴급 도움"):
-            st.session_state.emergency_mode = True
-            st.session_state.crisis_level = 3
-            st.rerun()
+       # [main() 함수의 중간 부분 - 기존 st.radio 메뉴 선택 부분을 대체]
+
+    # ========== V3.0 Phase 3: AI 상담 엔진 전체 대체 (Total Replacement) ==========
+    # st.radio 메뉴를 제거하고, AI 상담을 메인 페이지로 설정
     
-    # Level 1 경고 (상단 띠)
-    warnings_shown = 0
+    # 1순위: Emergency Crisis Mode with Location
+    if st.session_state.emergency_mode:
+        show_emergency_with_location()
+        return
+
+    # 2순위: AI 상담 (Total Replacement)
+    show_chat_interface()
+
+    # (선택 사항: 대시보드를 보고 싶을 경우 사이드바에 추가)
+    st.sidebar.title("📚 대시보드 및 설정")
+    sidebar_menu = st.sidebar.radio(
+        "메뉴",
+        [
+            "🏠 상태 요약",
+            "📊 위기 대시보드",
+            "💭 감정 패턴",
+            "🏃 운동 대시보드",
+            "🍽️ 영양 대시보드",
+            "🤝 사회적 연결",
+            "🎯 Phase 2 설정"
+        ],
+        index=0
+    )
+
+    if sidebar_menu == "🏠 상태 요약":
+        show_summary()
     
-    # 운동 Level 1 경고
-    if exercise_intervention and exercise_intervention['level'] == 1:
-        st.warning(exercise_intervention['message'])
-        warnings_shown += 1
-    
-    # 영양 Level 1 경고
-    if nutrition_intervention and nutrition_intervention['level'] == 1:
-        st.warning(nutrition_intervention['message'])
-        warnings_shown += 1
-    
-    # 사회적 연결 Level 1 경고 (NEW)
-    if social_intervention and social_intervention['level'] == 1:
-        st.warning(social_intervention['message'])
-        warnings_shown += 1
-    
-    # 메뉴별 화면
-    if menu == "🎯 Phase 2 설정":
-        st.title("🎯 Phase 2 설정")
-        st.caption("Emotion Pattern Engine 추가!")
-        set_target_bedtime()
-        
-        st.markdown("---")
-        st.subheader("📊 전체 현황 (Phase 1 + Phase 2)")
-        
-        col1, col2, col3, col4, col5, col6 = st.columns(6)
-        
-        with col1:
-            st.metric("수면 기록", f"{len(st.session_state.sleep_data)}일")
-        
-        with col2:
-            st.metric("위기 감지", f"{pattern['total_count']}회")
-        
-        with col3:
-            e_score = st.session_state.emotion_score
-            st.metric("감정 레벨", f"E{e_score}")
-        
-        with col4:
-            st.metric("운동 일수", f"{len(st.session_state.exercise_records)}일")
-        
-        with col5:
-            st.metric("식사 기록", f"{len(st.session_state.meal_records)}회")
-        
-        with col6:
-            st.metric("사회 접촉", f"{len(st.session_state.social_interactions)}회")
-    
-    elif menu == "📊 위기 대시보드":
+    elif sidebar_menu == "📊 위기 대시보드":
         st.title("📊 위기 대시보드")
         show_crisis_dashboard()
     
-    elif menu == "💭 감정 패턴":
+    elif sidebar_menu == "💭 감정 패턴":
         st.title("💭 감정 패턴 분석 (Phase 2)")
         show_emotion_dashboard()
     
-    elif menu == "🏃 운동 대시보드":
+    elif sidebar_menu == "🏃 운동 대시보드":
         st.title("🏃 운동 대시보드")
         show_exercise_dashboard()
     
-    elif menu == "🍽️ 영양 대시보드":
+    elif sidebar_menu == "🍽️ 영양 대시보드":
         st.title("🍽️ 영양 대시보드")
         show_nutrition_dashboard()
     
-    elif menu == "🤝 사회적 연결":
+    elif sidebar_menu == "🤝 사회적 연결":
         st.title("🤝 사회적 연결")
         show_social_connection_dashboard()
     
-    elif menu == "💬 AI 상담":
-        show_education()
-    
-    elif menu == "📊 수면 기록":
-        st.title("📊 수면 기록")
-        add_sleep_record()
-    
-    elif menu == "💤 수면 분석":
-        st.title("💤 수면 분석")
-        calculate_sleep_debt()
-    
-    elif menu == "🧠 CBT-I 교육":
-        st.title("🧠 CBT-I 교육")
-        show_cbti_education()
-    
-    elif menu == "🫁 호흡 운동":
-        st.title("🫁 호흡 운동")
-        breathing_exercise()
-
-if __name__ == "__main__":
-    main()
+    elif sidebar_menu == "🎯 Phase 2 설정":
+        st.title("🎯 Phase 2 설정")
+        show_settings()
