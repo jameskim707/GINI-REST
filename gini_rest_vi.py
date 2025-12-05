@@ -592,6 +592,127 @@ def check_emotion_intervention():
         'message': get_emotion_response(e_score, isolation_score, crisis_pattern)
     }
 
+# ============================================================================
+# AI 상담 엔진 (자유 대화형) - 라이라 + 제미나이 설계
+# ============================================================================
+
+def determine_forced_intervention():
+    """강제 개입 필요성 판단 (제미나이 설계)"""
+    e_score = st.session_state.emotion_score
+    isolation = st.session_state.isolation_score
+    crisis = get_crisis_pattern()
+    days_exercise = days_since_last_exercise()
+    hours_meal = hours_since_last_meal()
+    
+    # 1순위: E5 or Crisis Level 3
+    if e_score >= 5 or crisis['recent_7days'] >= 3:
+        return {
+            'required': True,
+            'tone': 'Crisis',
+            'priority': 1,
+            'message': f"""🚨 위기 상태 감지
+- 감정: E{e_score}
+- 위기 신호: {crisis['recent_7days']}회
+
+즉각적인 안전 확보가 필요합니다."""
+        }
+    
+    # 2순위: 고립 85+ or 24시간 공복
+    if isolation >= 85 or hours_meal >= 24:
+        return {
+            'required': True,
+            'tone': 'Crisis',
+            'priority': 2,
+            'message': f"""🚨 긴급 개입 필요
+- 고립: {isolation}/100
+- 공복: {hours_meal:.0f}시간
+
+신체/정신 건강이 위험합니다."""
+        }
+    
+    # 3순위: E4 + 고립 70+
+    if e_score >= 4 and isolation >= 70:
+        return {
+            'required': True,
+            'tone': 'Directive',
+            'priority': 3,
+            'message': f"""⚠️ 복합 위험 감지
+- 감정: E4 (심각)
+- 고립: {isolation}/100
+
+즉시 행동이 필요합니다."""
+        }
+    
+    # 4순위: 운동 7일+ or 식사 18시간+
+    if days_exercise >= 7 or hours_meal >= 18:
+        return {
+            'required': True,
+            'tone': 'Directive',
+            'priority': 4,
+            'message': f"""⚠️ 생활 패턴 붕괴
+- 운동: {days_exercise}일 미실시
+- 식사: {hours_meal:.0f}시간 전
+
+기본 루틴 회복이 시급합니다."""
+        }
+    
+    # 5순위: E3 + (운동 3일+ or 고립 40+)
+    if e_score >= 3 and (days_exercise >= 3 or isolation >= 40):
+        return {
+            'required': True,
+            'tone': 'Directive',
+            'priority': 5,
+            'message': f"""💛 주의 필요
+- 감정: E3
+- 운동/사회적 연결 부족
+
+조기 개입이 효과적입니다."""
+        }
+    
+    return {
+        'required': False,
+        'tone': None,
+        'priority': 0,
+        'message': None
+    }
+
+def get_tone_description(e_score, isolation, crisis_level, forced_intervention):
+    """Tone Engine - 4단계 톤 설명"""
+    
+    if forced_intervention and forced_intervention['required']:
+        tone = forced_intervention['tone']
+        if tone == 'Crisis':
+            return "Crisis (위기 대응)", "즉각적이고 단호한 어조. 긴급성 강조."
+        elif tone == 'Directive':
+            return "Directive (강력 지시)", "단호하지만 공감적. 명확한 행동 지시."
+    
+    # 일반 상황
+    if e_score >= 4 or isolation >= 85 or crisis_level >= 3:
+        return "Crisis (위기 대응)", "즉각적 안전 확보 우선"
+    elif e_score >= 3 or isolation >= 70 or crisis_level >= 1:
+        return "Directive (강력 지시)", "구체적 행동 지시"
+    elif e_score >= 2:
+        return "Neutral (중립 조언)", "공감 + 실용적 조언"
+    else:
+        return "Soft (부드러운 격려)", "따뜻하고 지지적"
+
+def get_system_context():
+    """현재 시스템 상태 컨텍스트"""
+    e_score = st.session_state.emotion_score
+    isolation = st.session_state.isolation_score
+    crisis = get_crisis_pattern()
+    days_exercise = days_since_last_exercise()
+    hours_meal = hours_since_last_meal()
+    
+    e_level_text = {1: "안정", 2: "주의", 3: "위험", 4: "심각", 5: "위기"}
+    
+    return f"""[사용자 현황]
+- 감정 레벨: E{e_score} ({e_level_text[e_score]})
+- 고립 점수: {isolation}/100
+- 위기 신호: {crisis['recent_7days']}회 (최근 7일)
+- 마지막 운동: {days_exercise}일 전
+- 마지막 식사: {hours_meal:.0f}시간 전"""
+
 def show_emotion_dashboard():
     """감정 패턴 대시보드"""
     st.subheader("💭 감정 패턴 분석 (Phase 2)")
@@ -2485,64 +2606,229 @@ def breathing_exercise():
     st.info("호흡 운동 - v2.0 유지")
 
 def show_education():
-    """AI 상담 (Enhanced with Phase 2)"""
+    """AI 상담 - 자유 대화형 (라이라 + 제미나이 설계)"""
     st.title("💬 AI 상담")
-    st.caption("Phase 2: Emotion Pattern Engine 통합")
+    st.caption("자유로운 대화형 인터페이스 | Tone Engine 적용")
     
     st.markdown("---")
     
-    st.subheader("💬 질문하기")
-    st.info("⚡ Phase 2: 감정 패턴 자동 분석 + 위기 감지")
+    # 현재 상태 표시
+    forced_intervention = determine_forced_intervention()
+    tone_name, tone_desc = get_tone_description(
+        st.session_state.emotion_score,
+        st.session_state.isolation_score,
+        get_crisis_pattern()['recent_7days'],
+        forced_intervention
+    )
     
-    user_input = st.text_input("수면 또는 정신건강 관련 질문:")
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        if forced_intervention['required']:
+            st.error(f"⚠️ 강제 개입 모드 | {tone_name}")
+        else:
+            st.info(f"💬 대화 모드 | {tone_name}")
+    
+    with col2:
+        if st.button("🔄 상태 새로고침", use_container_width=True):
+            st.rerun()
+    
+    st.caption(f"현재 톤: {tone_desc}")
+    
+    # 강제 개입 메시지 표시
+    if forced_intervention['required']:
+        st.warning(f"""
+**시스템 진단:**
+        
+{forced_intervention['message']}
+
+**우선순위:** {forced_intervention['priority']}
+**적용 톤:** {forced_intervention['tone']}
+        """)
+    
+    st.markdown("---")
+    
+    # 채팅 히스토리 표시
+    if 'ai_chat_history' not in st.session_state:
+        st.session_state.ai_chat_history = []
+    
+    # 채팅 컨테이너
+    chat_container = st.container()
+    
+    with chat_container:
+        for msg in st.session_state.ai_chat_history:
+            with st.chat_message(msg['role']):
+                st.write(msg['content'])
+    
+    # 사용자 입력
+    user_input = st.chat_input("무엇이든 편하게 이야기해주세요...")
     
     if user_input:
-        # Phase 2: 감정 분석 먼저
+        # 사용자 메시지 추가
+        st.session_state.ai_chat_history.append({
+            'role': 'user',
+            'content': user_input
+        })
+        
+        # 감정 분석
         emotion_result = detect_emotion_level(user_input)
-        e_score = emotion_result['score']
+        record_emotion_event(emotion_result['score'], emotion_result['emotions'], user_input)
         
-        # E5면 즉시 위기 모드
-        if e_score == 5:
-            record_emotion_event(e_score, emotion_result['emotions'], user_input)
+        # 위기 키워드 체크
+        has_crisis, crisis_level_detected, _ = check_crisis_keywords(user_input)
+        
+        # E5 or 위기 감지 시 즉시 Crisis 모드
+        if emotion_result['score'] >= 5 or has_crisis:
             st.session_state.emergency_mode = True
-            st.session_state.crisis_level = 3
+            st.session_state.crisis_level = max(3, crisis_level_detected)
             st.rerun()
         
-        # Crisis 키워드도 체크
-        has_crisis, crisis_level, crisis_response = check_crisis_keywords(user_input)
+        # AI 답변 생성
+        forced = determine_forced_intervention()
         
-        if has_crisis:
-            record_emotion_event(e_score, emotion_result['emotions'], user_input)
-            st.session_state.emergency_mode = True
-            st.session_state.crisis_level = crisis_level
-            st.rerun()
+        # System Context 생성
+        system_context = get_system_context()
+        
+        # 강제 개입 시 특별 프롬프트
+        if forced['required']:
+            ai_response = f"""
+{forced['message']}
+
+**지금 당장 필요한 행동:**
+
+"""
+            if forced['tone'] == 'Crisis':
+                if st.session_state.isolation_score >= 85:
+                    ai_response += """
+1. 📞 지금 바로 전화하세요
+   - 정신건강 상담: 1577-0199
+   - 생명의 전화: 1588-9191
+
+2. 🚶 사람 있는 곳으로 이동
+   - 카페, 편의점, 공원 어디든
+
+3. 💬 누군가에게 연락
+   - 가족, 친구, 지인 아무나
+"""
+                
+                if hours_since_last_meal() >= 24:
+                    ai_response += """
+1. 🍽️ 지금 즉시 뭐라도 먹으세요
+   - 우유, 바나나, 계란 뭐든
+   - 5분이면 됩니다
+
+2. 💧 물 마시기
+   - 탈수 상태일 수 있습니다
+"""
+                
+                if days_since_last_exercise() >= 7:
+                    ai_response += """
+1. 💪 지금 일어나세요
+   - 5분만 걷기
+   - 창문 열고 스트레칭
+
+2. 🌞 햇빛 보기
+   - 세로토�in 생성에 필수
+"""
+            
+            elif forced['tone'] == 'Directive':
+                if st.session_state.emotion_score >= 3:
+                    ai_response += """
+1. 🫁 호흡 운동 (지금 바로)
+   - 4초 들이마시기
+   - 7초 참기
+   - 8초 내쉬기
+   - 3회 반복
+
+2. 💪 10분 걷기
+   - 미루지 마세요
+   - 기분이 달라집니다
+
+3. 💬 누군가와 대화
+   - 짧은 문자라도
+"""
+                
+                if days_since_last_exercise() >= 3:
+                    ai_response += """
+1. 💪 운동 즉시 시작
+   - {days_since_last_exercise()}일째 안 했어요
+   - 지금 운동화 신으세요
+"""
         else:
-            # 정상 처리
-            record_emotion_event(e_score, emotion_result['emotions'], user_input)
+            # 일반 대화 - 톤에 맞춰 답변
+            tone = tone_name.split()[0]
             
-            st.chat_message("user").write(user_input)
+            if tone == "Soft":
+                ai_response = f"""
+좋은 상태네요! 😊
+
+{system_context}
+
+현재 잘 유지하고 계신 것 같아요. 이런 좋은 루틴을 계속 이어가세요.
+
+궁금한 점이 있으면 언제든 물어보세요!
+"""
             
-            # Phase 2 감정 분석 결과 표시
-            if e_score >= 2:
-                st.info(f"💭 감정 분석: E{e_score} 레벨 감지")
-                
-                isolation = st.session_state.isolation_score
-                crisis = get_crisis_pattern()
-                
-                response = get_emotion_response(e_score, isolation, crisis)
-                
-                st.chat_message("assistant").write(response)
-            else:
-                st.chat_message("assistant").write("""
-                더 자세한 정보는 각 메뉴를 참고하세요:
-                - 💭 감정 패턴 (Phase 2)
-                - 📊 수면 기록
-                - 🏃 운동 대시보드
-                - 🍽️ 영양 대시보드
-                - 🤝 사회적 연결
-                - 🧠 CBT-I 교육
-                - 🫁 호흡 운동
-                """)
+            elif tone == "Neutral":
+                ai_response = f"""
+{system_context}
+
+조금 주의가 필요한 상태예요. 
+
+**도움될 만한 것:**
+- 🫁 호흡 운동이나 가벼운 산책
+- 🍵 따뜻한 차와 함께 휴식
+- 💬 가벼운 대화나 음악 감상
+
+더 구체적으로 어떤 부분이 힘드신가요?
+"""
+            
+            elif tone == "Directive":
+                ai_response = f"""
+{system_context}
+
+지금 상태가 좋지 않네요. 즉시 행동이 필요해요.
+
+**지금 할 수 있는 것:**
+1. 일어나서 5분 걷기
+2. 깊게 호흡하기
+3. 물 한 잔 마시기
+
+미루지 마세요. 지금 하면 기분이 달라집니다.
+
+어떤 부분이 가장 힘드신가요?
+"""
+        
+        # AI 답변 추가
+        st.session_state.ai_chat_history.append({
+            'role': 'assistant',
+            'content': ai_response
+        })
+        
+        st.rerun()
+    
+    # 히스토리 초기화 버튼
+    if len(st.session_state.ai_chat_history) > 0:
+        st.markdown("---")
+        if st.button("🗑️ 대화 내역 지우기"):
+            st.session_state.ai_chat_history = []
+            st.rerun()
+    
+    # 안내
+    st.markdown("---")
+    st.info("""
+    💡 **AI 상담 사용 가이드**
+    
+    - 무엇이든 편하게 이야기하세요
+    - 시스템이 당신의 상태를 분석합니다
+    - 필요 시 자동으로 개입합니다
+    - 위기 상황은 즉시 감지됩니다
+    
+    ⚠️ **응급 상황:**
+    - 📞 정신건강 상담: 1577-0199
+    - 📞 자살예방: 1393
+    - 📞 생명의 전화: 1588-9191
+    """)
 
 # ============================================================================
 # 메인 앱
