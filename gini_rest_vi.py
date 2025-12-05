@@ -2,18 +2,22 @@ import streamlit as st
 from datetime import datetime, timedelta
 import time
 import json
+import requests
 
 # ============================================================================
-# GINI R.E.S.T. v3.0 Phase 2 - Human Recovery AI System
-# Phase 2 COMPLETE: Emotion Pattern Engine
+# GINI R.E.S.T. v3.0 - Groq AI Chat
 # ============================================================================
 
 # 페이지 설정
 st.set_page_config(
-    page_title="GINI R.E.S.T. v3.0 Phase 2",
+    page_title="GINI R.E.S.T. v3.0 Groq",
     page_icon="🌙",
     layout="wide"
 )
+
+# Groq API 설정
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # ============================================================================
 # 1. 초기화 및 세션 상태 관리
@@ -593,7 +597,7 @@ def check_emotion_intervention():
     }
 
 # ============================================================================
-# AI 상담 엔진 (자유 대화형) - 라이라 + 제미나이 설계
+# Groq AI 상담 엔진 (라이라 + 제미나이 설계)
 # ============================================================================
 
 def determine_forced_intervention():
@@ -610,11 +614,7 @@ def determine_forced_intervention():
             'required': True,
             'tone': 'Crisis',
             'priority': 1,
-            'message': f"""🚨 위기 상태 감지
-- 감정: E{e_score}
-- 위기 신호: {crisis['recent_7days']}회
-
-즉각적인 안전 확보가 필요합니다."""
+            'message': f"🚨 위기 상태 감지\n- 감정: E{e_score}\n- 위기 신호: {crisis['recent_7days']}회\n\n즉각적인 안전 확보가 필요합니다."
         }
     
     # 2순위: 고립 85+ or 24시간 공복
@@ -623,11 +623,7 @@ def determine_forced_intervention():
             'required': True,
             'tone': 'Crisis',
             'priority': 2,
-            'message': f"""🚨 긴급 개입 필요
-- 고립: {isolation}/100
-- 공복: {hours_meal:.0f}시간
-
-신체/정신 건강이 위험합니다."""
+            'message': f"🚨 긴급 개입 필요\n- 고립: {isolation}/100\n- 공복: {hours_meal:.0f}시간\n\n신체/정신 건강이 위험합니다."
         }
     
     # 3순위: E4 + 고립 70+
@@ -636,11 +632,7 @@ def determine_forced_intervention():
             'required': True,
             'tone': 'Directive',
             'priority': 3,
-            'message': f"""⚠️ 복합 위험 감지
-- 감정: E4 (심각)
-- 고립: {isolation}/100
-
-즉시 행동이 필요합니다."""
+            'message': f"⚠️ 복합 위험 감지\n- 감정: E4 (심각)\n- 고립: {isolation}/100\n\n즉시 행동이 필요합니다."
         }
     
     # 4순위: 운동 7일+ or 식사 18시간+
@@ -649,11 +641,7 @@ def determine_forced_intervention():
             'required': True,
             'tone': 'Directive',
             'priority': 4,
-            'message': f"""⚠️ 생활 패턴 붕괴
-- 운동: {days_exercise}일 미실시
-- 식사: {hours_meal:.0f}시간 전
-
-기본 루틴 회복이 시급합니다."""
+            'message': f"⚠️ 생활 패턴 붕괴\n- 운동: {days_exercise}일 미실시\n- 식사: {hours_meal:.0f}시간 전\n\n기본 루틴 회복이 시급합니다."
         }
     
     # 5순위: E3 + (운동 3일+ or 고립 40+)
@@ -662,19 +650,10 @@ def determine_forced_intervention():
             'required': True,
             'tone': 'Directive',
             'priority': 5,
-            'message': f"""💛 주의 필요
-- 감정: E3
-- 운동/사회적 연결 부족
-
-조기 개입이 효과적입니다."""
+            'message': f"💛 주의 필요\n- 감정: E3\n- 운동/사회적 연결 부족\n\n조기 개입이 효과적입니다."
         }
     
-    return {
-        'required': False,
-        'tone': None,
-        'priority': 0,
-        'message': None
-    }
+    return {'required': False, 'tone': None, 'priority': 0, 'message': None}
 
 def get_tone_description(e_score, isolation, crisis_level, forced_intervention):
     """Tone Engine - 4단계 톤 설명"""
@@ -682,19 +661,18 @@ def get_tone_description(e_score, isolation, crisis_level, forced_intervention):
     if forced_intervention and forced_intervention['required']:
         tone = forced_intervention['tone']
         if tone == 'Crisis':
-            return "Crisis (위기 대응)", "즉각적이고 단호한 어조. 긴급성 강조."
+            return "Crisis (위기)", "즉각적이고 단호한 어조"
         elif tone == 'Directive':
-            return "Directive (강력 지시)", "단호하지만 공감적. 명확한 행동 지시."
+            return "Directive (강력 지시)", "단호하지만 공감적"
     
-    # 일반 상황
     if e_score >= 4 or isolation >= 85 or crisis_level >= 3:
-        return "Crisis (위기 대응)", "즉각적 안전 확보 우선"
+        return "Crisis (위기)", "즉각적 안전 확보 우선"
     elif e_score >= 3 or isolation >= 70 or crisis_level >= 1:
         return "Directive (강력 지시)", "구체적 행동 지시"
     elif e_score >= 2:
-        return "Neutral (중립 조언)", "공감 + 실용적 조언"
+        return "Neutral (중립)", "공감 + 실용적 조언"
     else:
-        return "Soft (부드러운 격려)", "따뜻하고 지지적"
+        return "Soft (격려)", "따뜻하고 지지적"
 
 def get_system_context():
     """현재 시스템 상태 컨텍스트"""
@@ -707,11 +685,81 @@ def get_system_context():
     e_level_text = {1: "안정", 2: "주의", 3: "위험", 4: "심각", 5: "위기"}
     
     return f"""[사용자 현황]
-- 감정 레벨: E{e_score} ({e_level_text[e_score]})
+- 감정 레벨: E{e_score} ({e_level_text.get(e_score, '알 수 없음')})
 - 고립 점수: {isolation}/100
 - 위기 신호: {crisis['recent_7days']}회 (최근 7일)
 - 마지막 운동: {days_exercise}일 전
 - 마지막 식사: {hours_meal:.0f}시간 전"""
+
+def build_system_prompt():
+    """Groq API용 System Prompt 생성"""
+    
+    forced = determine_forced_intervention()
+    
+    base_prompt = """당신은 GINI R.E.S.T. 정신건강 회복 AI 상담사입니다.
+
+[핵심 원칙]
+1. 따뜻하고 공감적인 대화
+2. 구체적이고 실행 가능한 조언
+3. 절대 금지: '메뉴', '설정', '대시보드' 등 시스템 UI 용어 사용 금지
+4. 짧고 명확한 답변 (3-5문장)
+
+"""
+    
+    base_prompt += get_system_context() + "\n\n"
+    
+    e_score = st.session_state.emotion_score
+    isolation = st.session_state.isolation_score
+    crisis_level = get_crisis_pattern()['recent_7days']
+    
+    if forced['required']:
+        base_prompt += f"""
+[⚠️ 강제 개입 모드]
+시스템 진단: {forced['message']}
+적용 톤: {forced['tone']}
+
+"""
+        if forced['tone'] == 'Crisis':
+            base_prompt += "[Crisis Tone] 즉각적이고 단호한 어조. '지금 당장', '즉시' 강조. 구체적 행동 명령. 전문가 연락처 제공 (1577-0199, 1588-9191).\n"
+        elif forced['tone'] == 'Directive':
+            base_prompt += "[Directive Tone] 단호하지만 공감적. 명확한 행동 지시. '~해야 해요', '지금 ~하세요'. 미루지 못하게.\n"
+    else:
+        if e_score >= 4 or isolation >= 85 or crisis_level >= 3:
+            base_prompt += "[Crisis Tone] 즉각적 안전 확보 우선. 강력한 공감과 즉시 행동 지시.\n"
+        elif e_score >= 3 or isolation >= 70 or crisis_level >= 1:
+            base_prompt += "[Directive Tone] 단호하지만 따뜻하게. 구체적 행동 지시. 회피 허용 안 함.\n"
+        elif e_score >= 2:
+            base_prompt += "[Neutral Tone] 균형잡힌 어조. 공감 + 실용적 조언.\n"
+        else:
+            base_prompt += "[Soft Tone] 따뜻하고 지지적. 긍정적 강화.\n"
+    
+    return base_prompt
+
+def call_groq_api(messages):
+    """Groq API 호출"""
+    
+    if not GROQ_API_KEY:
+        return "⚠️ Groq API 키가 설정되지 않았습니다."
+    
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "model": "llama-3.1-70b-versatile",
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 500
+    }
+    
+    try:
+        response = requests.post(GROQ_API_URL, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        return result['choices'][0]['message']['content']
+    except Exception as e:
+        return f"⚠️ API 오류: {str(e)}"
 
 def show_emotion_dashboard():
     """감정 패턴 대시보드"""
@@ -2606,11 +2654,16 @@ def breathing_exercise():
     st.info("호흡 운동 - v2.0 유지")
 
 def show_education():
-    """AI 상담 - 자유 대화형 (라이라 + 제미나이 설계)"""
+    """AI 상담 - Groq API 기반 진짜 대화형"""
     st.title("💬 AI 상담")
-    st.caption("자유로운 대화형 인터페이스 | Tone Engine 적용")
+    st.caption("Groq API 기반 실시간 대화 | Tone Engine 적용")
     
     st.markdown("---")
+    
+    # API 키 확인
+    if not GROQ_API_KEY:
+        st.error("⚠️ **Groq API 키가 없습니다.** Streamlit secrets에 `GROQ_API_KEY`를 추가해주세요.")
+        return
     
     # 현재 상태 표시
     forced_intervention = determine_forced_intervention()
@@ -2630,45 +2683,34 @@ def show_education():
             st.info(f"💬 대화 모드 | {tone_name}")
     
     with col2:
-        if st.button("🔄 상태 새로고침", use_container_width=True):
+        if st.button("🔄 새로고침", use_container_width=True):
             st.rerun()
     
     st.caption(f"현재 톤: {tone_desc}")
     
-    # 강제 개입 메시지 표시
+    # 강제 개입 메시지
     if forced_intervention['required']:
-        st.warning(f"""
-**시스템 진단:**
-        
-{forced_intervention['message']}
-
-**우선순위:** {forced_intervention['priority']}
-**적용 톤:** {forced_intervention['tone']}
-        """)
+        st.warning(f"**시스템 진단:**\n{forced_intervention['message']}\n\n**우선순위:** {forced_intervention['priority']} | **톤:** {forced_intervention['tone']}")
     
     st.markdown("---")
     
-    # 채팅 히스토리 표시
+    # 채팅 히스토리
     if 'ai_chat_history' not in st.session_state:
         st.session_state.ai_chat_history = []
     
-    # 채팅 컨테이너
-    chat_container = st.container()
-    
-    with chat_container:
-        for msg in st.session_state.ai_chat_history:
-            with st.chat_message(msg['role']):
-                st.write(msg['content'])
+    for msg in st.session_state.ai_chat_history:
+        with st.chat_message(msg['role']):
+            st.write(msg['content'])
     
     # 사용자 입력
     user_input = st.chat_input("무엇이든 편하게 이야기해주세요...")
     
     if user_input:
         # 사용자 메시지 추가
-        st.session_state.ai_chat_history.append({
-            'role': 'user',
-            'content': user_input
-        })
+        st.session_state.ai_chat_history.append({'role': 'user', 'content': user_input})
+        
+        with st.chat_message("user"):
+            st.write(user_input)
         
         # 감정 분석
         emotion_result = detect_emotion_level(user_input)
@@ -2677,142 +2719,37 @@ def show_education():
         # 위기 키워드 체크
         has_crisis, crisis_level_detected, _ = check_crisis_keywords(user_input)
         
-        # E5 or 위기 감지 시 즉시 Crisis 모드
+        # E5 or 위기 시 Crisis 모드
         if emotion_result['score'] >= 5 or has_crisis:
             st.session_state.emergency_mode = True
             st.session_state.crisis_level = max(3, crisis_level_detected)
             st.rerun()
         
-        # AI 답변 생성
-        forced = determine_forced_intervention()
+        # Groq API 호출
+        system_prompt = build_system_prompt()
+        recent_history = st.session_state.ai_chat_history[-10:]
         
-        # System Context 생성
-        system_context = get_system_context()
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in recent_history:
+            messages.append({"role": msg['role'], "content": msg['content']})
         
-        # 강제 개입 시 특별 프롬프트
-        if forced['required']:
-            ai_response = f"""
-{forced['message']}
-
-**지금 당장 필요한 행동:**
-
-"""
-            if forced['tone'] == 'Crisis':
-                if st.session_state.isolation_score >= 85:
-                    ai_response += """
-1. 📞 지금 바로 전화하세요
-   - 정신건강 상담: 1577-0199
-   - 생명의 전화: 1588-9191
-
-2. 🚶 사람 있는 곳으로 이동
-   - 카페, 편의점, 공원 어디든
-
-3. 💬 누군가에게 연락
-   - 가족, 친구, 지인 아무나
-"""
-                
-                if hours_since_last_meal() >= 24:
-                    ai_response += """
-1. 🍽️ 지금 즉시 뭐라도 먹으세요
-   - 우유, 바나나, 계란 뭐든
-   - 5분이면 됩니다
-
-2. 💧 물 마시기
-   - 탈수 상태일 수 있습니다
-"""
-                
-                if days_since_last_exercise() >= 7:
-                    ai_response += """
-1. 💪 지금 일어나세요
-   - 5분만 걷기
-   - 창문 열고 스트레칭
-
-2. 🌞 햇빛 보기
-   - 세로토�in 생성에 필수
-"""
-            
-            elif forced['tone'] == 'Directive':
-                if st.session_state.emotion_score >= 3:
-                    ai_response += """
-1. 🫁 호흡 운동 (지금 바로)
-   - 4초 들이마시기
-   - 7초 참기
-   - 8초 내쉬기
-   - 3회 반복
-
-2. 💪 10분 걷기
-   - 미루지 마세요
-   - 기분이 달라집니다
-
-3. 💬 누군가와 대화
-   - 짧은 문자라도
-"""
-                
-                if days_since_last_exercise() >= 3:
-                    ai_response += """
-1. 💪 운동 즉시 시작
-   - {days_since_last_exercise()}일째 안 했어요
-   - 지금 운동화 신으세요
-"""
-        else:
-            # 일반 대화 - 톤에 맞춰 답변
-            tone = tone_name.split()[0]
-            
-            if tone == "Soft":
-                ai_response = f"""
-좋은 상태네요! 😊
-
-{system_context}
-
-현재 잘 유지하고 계신 것 같아요. 이런 좋은 루틴을 계속 이어가세요.
-
-궁금한 점이 있으면 언제든 물어보세요!
-"""
-            
-            elif tone == "Neutral":
-                ai_response = f"""
-{system_context}
-
-조금 주의가 필요한 상태예요. 
-
-**도움될 만한 것:**
-- 🫁 호흡 운동이나 가벼운 산책
-- 🍵 따뜻한 차와 함께 휴식
-- 💬 가벼운 대화나 음악 감상
-
-더 구체적으로 어떤 부분이 힘드신가요?
-"""
-            
-            elif tone == "Directive":
-                ai_response = f"""
-{system_context}
-
-지금 상태가 좋지 않네요. 즉시 행동이 필요해요.
-
-**지금 할 수 있는 것:**
-1. 일어나서 5분 걷기
-2. 깊게 호흡하기
-3. 물 한 잔 마시기
-
-미루지 마세요. 지금 하면 기분이 달라집니다.
-
-어떤 부분이 가장 힘드신가요?
-"""
+        with st.chat_message("assistant"):
+            with st.spinner("생각 중..."):
+                ai_response = call_groq_api(messages)
+                st.write(ai_response)
         
-        # AI 답변 추가
-        st.session_state.ai_chat_history.append({
-            'role': 'assistant',
-            'content': ai_response
-        })
-        
-        st.rerun()
+        st.session_state.ai_chat_history.append({'role': 'assistant', 'content': ai_response})
     
-    # 히스토리 초기화 버튼
+    # 히스토리 관리
     if len(st.session_state.ai_chat_history) > 0:
         st.markdown("---")
-        if st.button("🗑️ 대화 내역 지우기"):
-            st.session_state.ai_chat_history = []
-            st.rerun()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️ 대화 내역 지우기", use_container_width=True):
+                st.session_state.ai_chat_history = []
+                st.rerun()
+        with col2:
+            st.caption(f"총 {len(st.session_state.ai_chat_history)}개 메시지")
     
     # 안내
     st.markdown("---")
@@ -2822,12 +2759,13 @@ def show_education():
     - 무엇이든 편하게 이야기하세요
     - 시스템이 당신의 상태를 분석합니다
     - 필요 시 자동으로 개입합니다
-    - 위기 상황은 즉시 감지됩니다
     
     ⚠️ **응급 상황:**
     - 📞 정신건강 상담: 1577-0199
     - 📞 자살예방: 1393
     - 📞 생명의 전화: 1588-9191
+    
+    🤖 **Powered by Groq API** (Llama 3.1 70B)
     """)
 
 # ============================================================================
