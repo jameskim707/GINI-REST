@@ -692,46 +692,35 @@ def get_system_context():
 - 마지막 식사: {hours_meal:.0f}시간 전"""
 
 def build_system_prompt():
-    """Groq API용 System Prompt 생성"""
+    """Groq API용 System Prompt 생성 (단순화)"""
     
     forced = determine_forced_intervention()
     
-    base_prompt = """당신은 GINI R.E.S.T. 정신건강 회복 AI 상담사입니다.
-
-[핵심 원칙]
-1. 따뜻하고 공감적인 대화
-2. 구체적이고 실행 가능한 조언
-3. 절대 금지: '메뉴', '설정', '대시보드' 등 시스템 UI 용어 사용 금지
-4. 짧고 명확한 답변 (3-5문장)
-
-"""
+    # 기본 역할 (짧게)
+    base_prompt = "당신은 정신건강 회복 AI 상담사입니다. 따뜻하고 공감적으로 대화하되, 짧고 명확하게 답변하세요(3-5문장). 절대 '메뉴', '설정', '대시보드' 같은 시스템 용어는 사용하지 마세요.\n\n"
     
-    base_prompt += get_system_context() + "\n\n"
-    
+    # 현재 상태 (간단하게)
     e_score = st.session_state.emotion_score
     isolation = st.session_state.isolation_score
     crisis_level = get_crisis_pattern()['recent_7days']
     
-    if forced['required']:
-        base_prompt += f"""
-[⚠️ 강제 개입 모드]
-시스템 진단: {forced['message']}
-적용 톤: {forced['tone']}
-
-"""
+    base_prompt += f"사용자 상태: 감정 E{e_score}, 고립 {isolation}/100, 위기 {crisis_level}회\n\n"
+    
+    # 톤 적용 (간단하게)
+    if forced and forced['required']:
         if forced['tone'] == 'Crisis':
-            base_prompt += "[Crisis Tone] 즉각적이고 단호한 어조. '지금 당장', '즉시' 강조. 구체적 행동 명령. 전문가 연락처 제공 (1577-0199, 1588-9191).\n"
-        elif forced['tone'] == 'Directive':
-            base_prompt += "[Directive Tone] 단호하지만 공감적. 명확한 행동 지시. '~해야 해요', '지금 ~하세요'. 미루지 못하게.\n"
+            base_prompt += "톤: 즉각적이고 단호하게. '지금 당장' 강조. 전문가 연락처(1577-0199) 제공.\n"
+        else:
+            base_prompt += "톤: 단호하지만 공감적으로. 명확한 행동 지시.\n"
     else:
         if e_score >= 4 or isolation >= 85 or crisis_level >= 3:
-            base_prompt += "[Crisis Tone] 즉각적 안전 확보 우선. 강력한 공감과 즉시 행동 지시.\n"
+            base_prompt += "톤: Crisis - 즉각 안전 확보\n"
         elif e_score >= 3 or isolation >= 70 or crisis_level >= 1:
-            base_prompt += "[Directive Tone] 단호하지만 따뜻하게. 구체적 행동 지시. 회피 허용 안 함.\n"
+            base_prompt += "톤: Directive - 구체적 행동 지시\n"
         elif e_score >= 2:
-            base_prompt += "[Neutral Tone] 균형잡힌 어조. 공감 + 실용적 조언.\n"
+            base_prompt += "톤: Neutral - 공감과 조언\n"
         else:
-            base_prompt += "[Soft Tone] 따뜻하고 지지적. 긍정적 강화.\n"
+            base_prompt += "톤: Soft - 따뜻한 격려\n"
     
     return base_prompt
 
@@ -739,27 +728,45 @@ def call_groq_api(messages):
     """Groq API 호출"""
     
     if not GROQ_API_KEY:
-        return "⚠️ Groq API 키가 설정되지 않았습니다."
+        return "⚠️ Groq API 키가 설정되지 않았습니다. Streamlit secrets에 GROQ_API_KEY를 추가해주세요."
     
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     
+    # Groq API 요청 데이터
     data = {
-        "model": "llama-3.1-70b-versatile",
+        "model": "llama-3.1-8b-instant",  # 더 안정적인 모델로 변경
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 500
+        "max_tokens": 500,
+        "top_p": 0.9,
+        "stream": False
     }
     
     try:
         response = requests.post(GROQ_API_URL, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
+        
+        # 에러 상세 정보 출력
+        if response.status_code != 200:
+            error_detail = response.text
+            return f"⚠️ API 오류 ({response.status_code}): {error_detail}"
+        
         result = response.json()
+        
+        # 응답 형식 확인
+        if 'choices' not in result or len(result['choices']) == 0:
+            return f"⚠️ 응답 형식 오류: {result}"
+        
         return result['choices'][0]['message']['content']
+    
+    except requests.exceptions.Timeout:
+        return "⚠️ 응답 시간이 초과되었습니다. 다시 시도해주세요."
+    except requests.exceptions.RequestException as e:
+        return f"⚠️ 네트워크 오류: {str(e)}"
     except Exception as e:
-        return f"⚠️ API 오류: {str(e)}"
+        return f"⚠️ 예상치 못한 오류: {str(e)}"
 
 def show_emotion_dashboard():
     """감정 패턴 대시보드"""
